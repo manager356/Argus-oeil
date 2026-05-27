@@ -38,13 +38,21 @@ async def test_send_turn_returns_finalize_when_tool_use_complete():
         "answer_2": "réponse à Q2",
         "answer_3": "réponse à Q3",
         "answer_4": "réponse à Q4",
+        "niveau": "PROFIL FORT",
+        "score": 8,
+        "tags": ["loyal", "compétent"],
+        "synthese": "Profil solide, réponses précises.",
     }
     fake_response = _make_tool_use_response("finalize_interview", args)
     with patch.object(llm_client._client.messages, "create", new=AsyncMock(return_value=fake_response)):
         result = await llm_client.send_turn([])
 
     assert result.is_finalize
-    assert result.finalize == args
+    assert result.finalize["answer_1"] == "réponse à Q1"
+    assert result.finalize["niveau"] == "PROFIL FORT"
+    assert result.finalize["score"] == 8
+    assert result.finalize["tags"] == ["loyal", "compétent"]
+    assert result.finalize["synthese"] == "Profil solide, réponses précises."
 
 
 @pytest.mark.asyncio
@@ -59,3 +67,23 @@ async def test_send_turn_ignores_incomplete_tool_use():
     # On retombe sur le texte si le tool n'a pas toutes les réponses.
     assert not result.is_finalize
     assert result.text == "tentative incomplète"
+
+
+@pytest.mark.asyncio
+async def test_send_turn_ignores_finalize_missing_verdict_fields():
+    """finalize_interview avec les 4 réponses mais sans les champs verdict → retombe sur le texte."""
+    args = {
+        "answer_1": "réponse à Q1",
+        "answer_2": "réponse à Q2",
+        "answer_3": "réponse à Q3",
+        "answer_4": "réponse à Q4",
+        # niveau, score, tags, synthese absents
+    }
+    fake_response = _make_tool_use_response(
+        "finalize_interview", args, extra_text="jugement en cours"
+    )
+    with patch.object(llm_client._client.messages, "create", new=AsyncMock(return_value=fake_response)):
+        result = await llm_client.send_turn([])
+
+    assert not result.is_finalize
+    assert result.text == "jugement en cours"
