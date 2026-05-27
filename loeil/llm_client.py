@@ -7,7 +7,7 @@ from google.genai import types
 from loeil import config, prompts
 
 
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-2.5-flash"
 _FINALIZE_NAME = "finalize_interview"
 _REQUIRED_ANSWER_KEYS = ("answer_1", "answer_2", "answer_3", "answer_4")
 
