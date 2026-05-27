@@ -105,10 +105,18 @@ def _extract_finalize(response: Any) -> dict[str, Any] | None:
             # niveau et synthese doivent être non vides (score peut être 0, tags peut être [])
             if not args.get("niveau") or not args.get("synthese"):
                 return None
+            # niveau doit appartenir à l'enum défini dans le JSON schema
+            if args["niveau"] not in ("PROFIL FORT", "À SURVEILLER", "REJETÉ"):
+                return None
+            # Sécurisation du cast : null ou valeur non entière → rejet
+            try:
+                score_int = int(args["score"])
+            except (TypeError, ValueError):
+                return None
             return {
                 **{k: str(args[k]) for k in _REQUIRED_ANSWER_KEYS},
                 "niveau": str(args["niveau"]),
-                "score": int(args["score"]),
+                "score": score_int,
                 "tags": list(args["tags"]) if isinstance(args["tags"], list) else [],
                 "synthese": str(args["synthese"]),
             }

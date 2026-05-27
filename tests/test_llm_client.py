@@ -87,3 +87,25 @@ async def test_send_turn_ignores_finalize_missing_verdict_fields():
 
     assert not result.is_finalize
     assert result.text == "jugement en cours"
+
+
+@pytest.mark.asyncio
+async def test_send_turn_accepts_finalize_with_score_zero_and_empty_tags():
+    """score=0 et tags=[] sont des valeurs valides — ne doivent pas être rejetées."""
+    args = {
+        "answer_1": "réponse Q1",
+        "answer_2": "réponse Q2",
+        "answer_3": "réponse Q3",
+        "answer_4": "réponse Q4",
+        "niveau": "REJETÉ",
+        "score": 0,
+        "tags": [],
+        "synthese": "Profil inadapté.",
+    }
+    fake_response = _make_tool_use_response("finalize_interview", args)
+    with patch.object(llm_client._client.messages, "create", new=AsyncMock(return_value=fake_response)):
+        result = await llm_client.send_turn([])
+
+    assert result.is_finalize
+    assert result.finalize["score"] == 0
+    assert result.finalize["tags"] == []
