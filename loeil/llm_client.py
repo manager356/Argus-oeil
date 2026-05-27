@@ -1,60 +1,62 @@
 from dataclasses import dataclass
 from typing import Any
 
-from google import genai
-from google.genai import types
+from anthropic import AsyncAnthropic
 
 from loeil import config, prompts
 
 
-MODEL = "gemini-2.5-flash"
+MODEL = "claude-haiku-4-5"
+MAX_TOKENS = 1024
+TEMPERATURE = 0.4
+
 _FINALIZE_NAME = "finalize_interview"
 _REQUIRED_ANSWER_KEYS = ("answer_1", "answer_2", "answer_3", "answer_4")
 
 
-_client = genai.Client(api_key=config.GEMINI_API_KEY)
+_client = AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
 
 
-_finalize_tool = types.Tool(
-    function_declarations=[
-        types.FunctionDeclaration(
-            name=_FINALIZE_NAME,
-            description=(
-                "Appelle cette fonction UNIQUEMENT quand tu as obtenu les 4 réponses du candidat, "
-                "dans l'ordre où elles ont été posées. N'envoie aucun message texte en parallèle de cet appel."
-            ),
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "answer_1": types.Schema(
-                        type=types.Type.STRING,
-                        description=f"Réponse à Q1 : {prompts.QUESTIONS[0]}",
-                    ),
-                    "answer_2": types.Schema(
-                        type=types.Type.STRING,
-                        description=f"Réponse à Q2 : {prompts.QUESTIONS[1]}",
-                    ),
-                    "answer_3": types.Schema(
-                        type=types.Type.STRING,
-                        description=f"Réponse à Q3 : {prompts.QUESTIONS[2]}",
-                    ),
-                    "answer_4": types.Schema(
-                        type=types.Type.STRING,
-                        description=f"Réponse à Q4 : {prompts.QUESTIONS[3]}",
-                    ),
-                },
-                required=list(_REQUIRED_ANSWER_KEYS),
-            ),
-        )
-    ]
-)
+_finalize_tool: dict[str, Any] = {
+    "name": _FINALIZE_NAME,
+    "description": (
+        "Appelle cette fonction UNIQUEMENT quand tu as obtenu les 4 réponses du candidat, "
+        "dans l'ordre où elles ont été posées. N'envoie aucun message texte en parallèle de cet appel."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "answer_1": {
+                "type": "string",
+                "description": f"Réponse à Q1 : {prompts.QUESTIONS[0]}",
+            },
+            "answer_2": {
+                "type": "string",
+                "description": f"Réponse à Q2 : {prompts.QUESTIONS[1]}",
+            },
+            "answer_3": {
+                "type": "string",
+                "description": f"Réponse à Q3 : {prompts.QUESTIONS[2]}",
+            },
+            "answer_4": {
+                "type": "string",
+                "description": f"Réponse à Q4 : {prompts.QUESTIONS[3]}",
+            },
+        },
+        "required": list(_REQUIRED_ANSWER_KEYS),
+    },
+}
 
 
-_generation_config = types.GenerateContentConfig(
-    system_instruction=prompts.SYSTEM_PROMPT,
-    tools=[_finalize_tool],
-    temperature=0.7,
-)
+# Le system prompt est marqué pour le prompt caching d'Anthropic.
+# Cache TTL de 5 min — économise des tokens sur les tours successifs d'un même entretien.
+_system_blocks: list[dict[str, Any]] = [
+    {
+        "type": "text",
+        "text": prompts.SYSTEM_PROMPT,
+        "cache_control": {"type": "ephemeral"},
+    }
+]
 
 
 @dataclass
@@ -68,36 +70,43 @@ class LLMResponse:
 
 
 def _extract_finalize(response: Any) -> dict[str, str] | None:
-    for candidate in getattr(response, "candidates", None) or []:
-        content = getattr(candidate, "content", None)
-        if content is None:
-            continue
-        for part in getattr(content, "parts", None) or []:
-            fc = getattr(part, "function_call", None)
-            if fc and getattr(fc, "name", None) == _FINALIZE_NAME:
-                args = dict(getattr(fc, "args", None) or {})
-                if all(k in args and args[k] for k in _REQUIRED_ANSWER_KEYS):
-                    return {k: str(args[k]) for k in _REQUIRED_ANSWER_KEYS}
+    for block in getattr(response, "content", None) or []:
+        if getattr(block, "type", None) == "tool_use" and getattr(block, "name", None) == _FINALIZE_NAME:
+            args = dict(getattr(block, "input", None) or {})
+            if all(k in args and args[k] for k in _REQUIRED_ANSWER_KEYS):
+                return {k: str(args[k]) for k in _REQUIRED_ANSWER_KEYS}
     return None
 
 
+def _extract_text(response: Any) -> str:
+    parts: list[str] = []
+    for block in getattr(response, "content", None) or []:
+        if getattr(block, "type", None) == "text":
+            text = getattr(block, "text", None)
+            if text:
+                parts.append(text)
+    return "\n".join(parts).strip()
+
+
 async def send_turn(history: list[dict]) -> LLMResponse:
-    """Envoie l'historique de conversation à Gemini.
+    """Envoie l'historique de conversation à Claude.
 
     Retourne :
-      - LLMResponse(text=...) si Gemini envoie un message texte (à transmettre au candidat)
+      - LLMResponse(text=...) si Claude envoie un message texte (à transmettre au candidat)
       - LLMResponse(finalize={answer_1: ..., answer_2: ..., answer_3: ..., answer_4: ...})
-        si Gemini a appelé le tool finalize_interview avec les 4 réponses.
+        si Claude a appelé l'outil finalize_interview avec les 4 réponses.
     """
-    response = await _client.aio.models.generate_content(
+    response = await _client.messages.create(
         model=MODEL,
-        contents=history,
-        config=_generation_config,
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+        system=_system_blocks,
+        tools=[_finalize_tool],
+        messages=history,
     )
 
     finalize_args = _extract_finalize(response)
     if finalize_args is not None:
         return LLMResponse(finalize=finalize_args)
 
-    text = (getattr(response, "text", None) or "").strip()
-    return LLMResponse(text=text)
+    return LLMResponse(text=_extract_text(response))

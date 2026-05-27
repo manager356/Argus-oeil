@@ -48,8 +48,7 @@ async def start(
         log.warning("Échec d'envoi du message d'ouverture à %s : %s", user.id, exc)
         return
 
-    # NB : on n'ajoute PAS OPENING_MESSAGE à l'historique Gemini.
-    # L'API Gemini exige que la conversation commence par un message `user`.
+    # L'historique Claude commence avec le premier message du candidat (rôle "user").
     # Le system prompt informe déjà L'Œil que le candidat a reçu un message d'ouverture.
     interview = Interview(candidate=user)
     _active[user.id] = interview
@@ -75,7 +74,7 @@ async def handle_response(bot: discord.Client, user: discord.abc.User, content: 
         return
 
     interview.in_flight = True
-    interview.history.append({"role": "user", "parts": [{"text": content}]})
+    interview.history.append({"role": "user", "content": content})
 
     try:
         try:
@@ -94,11 +93,11 @@ async def handle_response(bot: discord.Client, user: discord.abc.User, content: 
             return
 
         if not response.text:
-            log.warning("Réponse vide de Gemini pour user_id=%s", user.id)
+            log.warning("Réponse vide du LLM pour user_id=%s", user.id)
             interview.history.pop()
             return
 
-        interview.history.append({"role": "model", "parts": [{"text": response.text}]})
+        interview.history.append({"role": "assistant", "content": response.text})
         try:
             await user.send(response.text)
         except discord.Forbidden:

@@ -30,6 +30,6 @@ def _optional_int(name: str) -> int | None:
 
 
 DISCORD_TOKEN: str = _required("DISCORD_TOKEN")
-GEMINI_API_KEY: str = _required("GEMINI_API_KEY")
+ANTHROPIC_API_KEY: str = _required("ANTHROPIC_API_KEY")
 STAFF_CHANNEL_ID: int = _required_int("STAFF_CHANNEL_ID")
 GUILD_ID: int | None = _optional_int("GUILD_ID")

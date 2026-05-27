@@ -7,42 +7,40 @@ from loeil import llm_client
 
 
 def _make_text_response(text: str) -> SimpleNamespace:
-    """Imite la forme d'une réponse Gemini contenant uniquement du texte."""
-    part = SimpleNamespace(function_call=None, text=text)
-    content = SimpleNamespace(parts=[part])
-    candidate = SimpleNamespace(content=content)
-    return SimpleNamespace(candidates=[candidate], text=text)
+    """Imite la forme d'une réponse Anthropic contenant uniquement du texte."""
+    block = SimpleNamespace(type="text", text=text)
+    return SimpleNamespace(content=[block])
 
 
-def _make_function_call_response(name: str, args: dict) -> SimpleNamespace:
-    """Imite la forme d'une réponse Gemini avec un function_call."""
-    function_call = SimpleNamespace(name=name, args=args)
-    part = SimpleNamespace(function_call=function_call, text=None)
-    content = SimpleNamespace(parts=[part])
-    candidate = SimpleNamespace(content=content)
-    return SimpleNamespace(candidates=[candidate], text=None)
+def _make_tool_use_response(name: str, args: dict, extra_text: str | None = None) -> SimpleNamespace:
+    """Imite la forme d'une réponse Anthropic avec un bloc tool_use."""
+    blocks = []
+    if extra_text:
+        blocks.append(SimpleNamespace(type="text", text=extra_text))
+    blocks.append(SimpleNamespace(type="tool_use", name=name, input=args, id="toolu_123"))
+    return SimpleNamespace(content=blocks)
 
 
 @pytest.mark.asyncio
-async def test_send_turn_returns_text_when_no_function_call():
+async def test_send_turn_returns_text_when_no_tool_use():
     fake_response = _make_text_response("Question 1.")
-    with patch.object(llm_client._client.aio.models, "generate_content", new=AsyncMock(return_value=fake_response)):
-        result = await llm_client.send_turn([{"role": "user", "parts": [{"text": "Bonjour"}]}])
+    with patch.object(llm_client._client.messages, "create", new=AsyncMock(return_value=fake_response)):
+        result = await llm_client.send_turn([{"role": "user", "content": "Bonjour"}])
 
     assert result.text == "Question 1."
     assert not result.is_finalize
 
 
 @pytest.mark.asyncio
-async def test_send_turn_returns_finalize_when_function_call_complete():
+async def test_send_turn_returns_finalize_when_tool_use_complete():
     args = {
         "answer_1": "réponse à Q1",
         "answer_2": "réponse à Q2",
         "answer_3": "réponse à Q3",
         "answer_4": "réponse à Q4",
     }
-    fake_response = _make_function_call_response("finalize_interview", args)
-    with patch.object(llm_client._client.aio.models, "generate_content", new=AsyncMock(return_value=fake_response)):
+    fake_response = _make_tool_use_response("finalize_interview", args)
+    with patch.object(llm_client._client.messages, "create", new=AsyncMock(return_value=fake_response)):
         result = await llm_client.send_turn([])
 
     assert result.is_finalize
@@ -50,11 +48,12 @@ async def test_send_turn_returns_finalize_when_function_call_complete():
 
 
 @pytest.mark.asyncio
-async def test_send_turn_ignores_incomplete_finalize():
+async def test_send_turn_ignores_incomplete_tool_use():
     args = {"answer_1": "x", "answer_2": "y"}  # manque answer_3 et answer_4
-    fake_response = _make_function_call_response("finalize_interview", args)
-    fake_response.text = "tentative incomplète"
-    with patch.object(llm_client._client.aio.models, "generate_content", new=AsyncMock(return_value=fake_response)):
+    fake_response = _make_tool_use_response(
+        "finalize_interview", args, extra_text="tentative incomplète"
+    )
+    with patch.object(llm_client._client.messages, "create", new=AsyncMock(return_value=fake_response)):
         result = await llm_client.send_turn([])
 
     # On retombe sur le texte si le tool n'a pas toutes les réponses.
