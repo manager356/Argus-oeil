@@ -7,7 +7,14 @@ load_dotenv()
 def _required(name: str) -> str:
     value = os.getenv(name)
     if not value:
-        raise RuntimeError(f"Variable d'environnement requise manquante : {name}")
+        visible = sorted(
+            k for k in os.environ.keys()
+            if not k.startswith(("RAILWAY", "NIXPACKS", "_")) and k not in ("PATH", "HOME", "PWD", "HOSTNAME", "LANG", "TERM", "SHLVL", "OLDPWD")
+        )
+        raise RuntimeError(
+            f"Variable d'environnement requise manquante : {name}. "
+            f"Variables d'app visibles : {visible}"
+        )
     return value
 
 
