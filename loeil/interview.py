@@ -48,8 +48,10 @@ async def start(
         log.warning("Échec d'envoi du message d'ouverture à %s : %s", user.id, exc)
         return
 
+    # NB : on n'ajoute PAS OPENING_MESSAGE à l'historique Gemini.
+    # L'API Gemini exige que la conversation commence par un message `user`.
+    # Le system prompt informe déjà L'Œil que le candidat a reçu un message d'ouverture.
     interview = Interview(candidate=user)
-    interview.history.append({"role": "model", "parts": [{"text": prompts.OPENING_MESSAGE}]})
     _active[user.id] = interview
     log.info("Entretien démarré avec %s (%s)", user, user.id)
 
