@@ -75,3 +75,9 @@ SANCTIONS_ENABLED: bool = os.getenv("SANCTIONS_ENABLED", "1") != "0"
 MUTE_MINUTES: int = _optional_int("MUTE_MINUTES") or 30
 # Durée pendant laquelle un avertissement compte (une récidive dans ce délai = mute)
 AVERTISSEMENT_HEURES: int = _optional_int("AVERTISSEMENT_HEURES") or 24
+
+# --- Missions du soir ---
+# ID Discord des chefs qui reçoivent la liste des présents (séparés par des virgules). Vide = désactivé.
+MISSIONS_CHEF_IDS: list[int] = _optional_int_list("MISSIONS_CHEF_IDS")
+MISSIONS_HOUR: str = os.getenv("MISSIONS_HOUR") or "20:00"
+RAPPORT_HOUR: str = os.getenv("RAPPORT_HOUR") or "02:00"

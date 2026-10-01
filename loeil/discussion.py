@@ -53,6 +53,9 @@ CONSIGNE_ENNUI = """Le dernier message vient d'un joueur qui dit qu'il n'y a rie
 Appuie-toi d'abord sur <remarques_membres> : ce que les membres les plus actifs ont dit ces derniers jours (ceux qui se plaignent d'en faire trop, de tout gérer seuls, que des tâches restent à faire, que les autres ne bougent pas). Tires-en ce qui manque concrètement, puis complète avec les objectifs (salon objectifs, annonces, bilans).
 - Montre-lui que le travail existe : ce que d'autres portent seuls ou réclament (tu peux citer qui, par son pseudo, et ce qu'il gère).
 - Donne-lui une ou deux actions précises qu'il peut prendre ce soir pour soulager ces membres.
+Regarde aussi <statut_sondage> :
+- s'il n'a pas voté « Présent », dis-lui de déclarer sa présence dans le sondage du salon présence : les supérieurs viendront lui donner une mission ;
+- s'il a voté « Présent », dis-lui que les supérieurs vont lui confier une mission ce soir (envoyée en MP vers 20h), et qu'en attendant il peut déjà avancer sur ce que tu proposes.
 Ton de L'Œil : factuel, froid, sans mépris ni sous-entendu ("reviens quand…"). N'invente rien : si les remarques et les objectifs ne disent rien d'utile, dis-lui de demander au staff ce qu'il peut reprendre."""
 
 CONSIGNE_SPONTANEE = """Personne ne t'a appelé : tu observes une conversation où une question a été posée.
@@ -124,6 +127,8 @@ def lire_decision(texte_json: str) -> str | None:
 class Discussion:
     def __init__(self, sources: dict[str, MemoireAnnonces], client: anthropic.AsyncAnthropic | None = None):
         self.sources = sources  # titre -> mémoire (ex. "Annonces", "Bilans de réunion")
+        # Coroutine (membre_id) -> "present" / "absent" / "peutetre" / None, branchée par bot.py
+        self.statut_presence = None
         self.client = client or anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
         self._derniere_spontanee: dict[int, float] = {}
         self._dernier_membre: dict[int, float] = {}
@@ -159,7 +164,8 @@ class Discussion:
         conversation = "<conversation>\n" + "\n".join(lignes) + "\n</conversation>"
         if est_ennui(message.content):
             consigne = CONSIGNE_ENNUI
-            conversation = await recolter_remarques(message.guild) + "\n\n" + conversation
+            conversation = (await recolter_remarques(message.guild) + "\n\n"
+                            + await self._texte_statut(message.author.id) + "\n\n" + conversation)
         else:
             consigne = CONSIGNE_DIRECTE if directe else CONSIGNE_SPONTANEE
 
@@ -182,6 +188,15 @@ class Discussion:
             await message.reply(reponse, mention_author=False, allowed_mentions=discord.AllowedMentions.none())
         except discord.HTTPException as exc:
             log.error("Impossible de répondre dans %s : %s", message.channel.id, exc)
+
+    async def _texte_statut(self, membre_id: int) -> str:
+        statut = await self.statut_presence(membre_id) if self.statut_presence else None
+        libelles = {
+            "present": "a voté « Présent » au sondage de ce soir",
+            "peutetre": "a voté « Peut-être » au sondage de ce soir",
+            "absent": "a voté « Absent » au sondage de ce soir",
+        }
+        return f"<statut_sondage>Ce joueur {libelles.get(statut, 'n’a PAS voté au sondage de présence de ce soir')}.</statut_sondage>"
 
     async def _appeler_ia(self, conversation: str, consigne: str) -> str | None:
         try:

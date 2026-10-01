@@ -7,10 +7,10 @@ import discord
 from discord import app_commands
 from discord.ext import tasks
 
-from loeil import apaisement, config
+from loeil import apaisement, config, missions
 from loeil.annonces import MemoireAnnonces
 from loeil.discussion import Discussion
-from loeil.presence import StockageVotes, VuePresence, publier_sondage
+from loeil.presence import StockageVotes, VuePresence, publier_sondage, votes_du_jour
 
 
 logging.basicConfig(
@@ -22,6 +22,7 @@ log = logging.getLogger("loeil.bot")
 FUSEAU = ZoneInfo("Europe/Paris")
 _heure, _minute = (int(x) for x in config.PRESENCE_HOUR.split(":"))
 _stockage_presence = StockageVotes(Path(__file__).parent / "donnees" / "presence.json")
+_stockage_missions = missions.StockageMissions(Path(__file__).parent / "donnees" / "missions.json")
 # Salons d'infos que L'Œil lit pour répondre : id du salon -> (nom de la partie, mémoire)
 _salons_infos: dict[int, tuple[str, MemoireAnnonces]] = {}
 if config.ANNONCES_CHANNEL_ID:
@@ -44,6 +45,12 @@ class LoeilClient(discord.Client):
 
     async def setup_hook(self) -> None:
         self.add_view(VuePresence(_stockage_presence))
+        self.add_view(missions.VueMission(_stockage_missions))
+        self.add_view(missions.VueAttribution(self, _stockage_missions, charger_presents))
+        if config.MISSIONS_CHEF_IDS:
+            envoi_presents.start()
+            rapport_missions.start()
+            log.info("Missions : présents envoyés à %s, rapport à %s", config.MISSIONS_HOUR, config.RAPPORT_HOUR)
         if config.PRESENCE_CHANNEL_ID:
             sondage_quotidien.start()
             log.info("Sondage de présence programmé à %s", config.PRESENCE_HOUR)
@@ -87,6 +94,140 @@ async def sondage_quotidien() -> None:
 @sondage_quotidien.before_loop
 async def _attendre_connexion() -> None:
     await bot.wait_until_ready()
+
+
+def _heure(texte: str) -> time:
+    h, m = (int(x) for x in texte.split(":"))
+    return time(hour=h, minute=m, tzinfo=FUSEAU)
+
+
+async def charger_presents(jour) -> tuple[dict[int, str], dict[int, str]] | None:
+    """({id: pseudo} des présents, {id: pseudo} des peut-être) pour le sondage du jour donné."""
+    salon = bot.get_channel(config.PRESENCE_CHANNEL_ID or 0)
+    if salon is None or bot.user is None:
+        return None
+    votes = await votes_du_jour(salon, _stockage_presence, jour, bot.user.id)
+    if votes is None:
+        return None
+
+    async def noms(ids: list[int]) -> dict[int, str]:
+        resultat = {}
+        for membre_id in ids:
+            membre = salon.guild.get_member(membre_id)
+            if membre is None:
+                try:
+                    membre = await salon.guild.fetch_member(membre_id)
+                except discord.HTTPException:
+                    resultat[membre_id] = f"Membre {membre_id}"
+                    continue
+            resultat[membre_id] = membre.display_name
+        return resultat
+
+    return await noms(votes["present"]), await noms(votes["peutetre"])
+
+
+async def statut_presence(membre_id: int) -> str | None:
+    """Ce que le membre a voté au sondage du soir (present / absent / peutetre), ou None."""
+    salon = bot.get_channel(config.PRESENCE_CHANNEL_ID or 0)
+    if salon is None or bot.user is None:
+        return None
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    votes = await votes_du_jour(salon, _stockage_presence, jour, bot.user.id)
+    if votes is None:
+        return None
+    return next((cle for cle, ids in votes.items() if membre_id in ids), None)
+
+
+_discussion.statut_presence = statut_presence
+
+
+async def envoyer_presents_aux_chefs(destinataires: list[int]) -> str:
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    resultat = await charger_presents(jour)
+    if resultat is None:
+        return "Pas de sondage de présence trouvé pour ce soir."
+    presents, peut_etre = resultat
+    embed = missions.embed_presents(jour, presents, peut_etre)
+    envoyes = 0
+    for chef_id in destinataires:
+        try:
+            chef = bot.get_user(chef_id) or await bot.fetch_user(chef_id)
+            await chef.send(embed=embed, view=missions.VueAttribution(bot, _stockage_missions, charger_presents))
+            envoyes += 1
+        except discord.HTTPException as exc:
+            log.error("Liste des présents non envoyée à %s : %s", chef_id, exc)
+    if not envoyes:
+        return "Impossible d'envoyer le MP (MP fermés ?)."
+    return f"Liste envoyée en MP ({len(presents)} présent(s), {len(peut_etre)} peut-être)."
+
+
+@tasks.loop(time=_heure(config.MISSIONS_HOUR))
+async def envoi_presents() -> None:
+    log.info(await envoyer_presents_aux_chefs(config.MISSIONS_CHEF_IDS))
+
+
+@tasks.loop(time=_heure(config.RAPPORT_HOUR))
+async def rapport_missions() -> None:
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    soiree = _stockage_missions.soiree(jour)
+    resultat = await charger_presents(jour)
+    presents = {**resultat[0], **resultat[1]} if resultat else {}
+    if not soiree and not presents:
+        return
+    embed = missions.embed_rapport(jour, soiree, presents)
+    salon_staff = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0)
+    cibles = [salon_staff] if salon_staff else []
+    for chef_id in config.MISSIONS_CHEF_IDS:
+        try:
+            cibles.append(bot.get_user(chef_id) or await bot.fetch_user(chef_id))
+        except discord.HTTPException:
+            pass
+    for cible in cibles:
+        try:
+            await cible.send(embed=embed)
+        except discord.HTTPException as exc:
+            log.error("Rapport non envoyé à %s : %s", cible, exc)
+
+
+@envoi_presents.before_loop
+async def _attendre_avant_presents() -> None:
+    await bot.wait_until_ready()
+
+
+@rapport_missions.before_loop
+async def _attendre_avant_rapport() -> None:
+    await bot.wait_until_ready()
+
+
+@bot.tree.command(name="missions", description="Recevoir maintenant en MP la liste des présents pour donner les missions.")
+@app_commands.default_permissions(manage_guild=True)
+async def commande_missions(interaction: discord.Interaction) -> None:
+    await interaction.response.defer(ephemeral=True)
+    await interaction.followup.send(await envoyer_presents_aux_chefs([interaction.user.id]), ephemeral=True)
+
+
+@bot.tree.command(name="mission", description="Donner une mission à un joueur (envoyée en MP).")
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.describe(joueur="Le joueur", mission="La mission à lui confier")
+async def commande_mission(interaction: discord.Interaction, joueur: discord.Member, mission: str) -> None:
+    await interaction.response.defer(ephemeral=True)
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    ok = await missions.envoyer_mission(bot, _stockage_missions, jour, joueur.id, joueur.display_name,
+                                        mission, interaction.user.display_name)
+    texte = (f"Mission envoyée en MP à {joueur.display_name}." if ok
+             else f"Impossible d'envoyer un MP à {joueur.display_name} (MP fermés).")
+    await interaction.followup.send(texte, ephemeral=True)
+
+
+@bot.tree.command(name="rapport-missions", description="Voir maintenant le rapport des missions de la soirée.")
+@app_commands.default_permissions(manage_guild=True)
+async def commande_rapport(interaction: discord.Interaction) -> None:
+    await interaction.response.defer(ephemeral=True)
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    resultat = await charger_presents(jour)
+    presents = {**resultat[0], **resultat[1]} if resultat else {}
+    embed = missions.embed_rapport(jour, _stockage_missions.soiree(jour), presents)
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="sondage-presence", description="Poster le sondage de présence maintenant.")

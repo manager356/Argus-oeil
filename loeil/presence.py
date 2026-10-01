@@ -132,6 +132,19 @@ class VuePresence(discord.ui.View):
             self.add_item(BoutonPresence(cle, stockage))
 
 
+async def votes_du_jour(salon: discord.abc.Messageable, stockage: StockageVotes,
+                        jour: date, bot_id: int) -> dict[str, list[int]] | None:
+    """Votes du sondage du jour : depuis le fichier, sinon relus dans le salon (après un redémarrage)."""
+    titre = titre_du_jour(jour)
+    for sondage in reversed(list(stockage.donnees.values())):
+        if sondage["titre"] == titre:
+            return sondage["votes"]
+    async for message in salon.history(limit=50):
+        if message.author.id == bot_id and message.embeds and message.embeds[0].title == titre:
+            return stockage.restaurer(message.id, titre, lire_votes_embed(message.embeds[0]))["votes"]
+    return None
+
+
 async def publier_sondage(salon: discord.abc.Messageable, stockage: StockageVotes,
                           jour: date, role_id: int = 0) -> discord.Message:
     titre = titre_du_jour(jour)
