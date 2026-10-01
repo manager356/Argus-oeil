@@ -41,7 +41,9 @@ Personnalité : mystérieux, calme, phrases courtes, un peu froid, mais tu aides
 
 Ce que tu sais : uniquement les informations ci-dessous (annonces, bilans de réunion, objectifs), le résultat du sondage de présence du soir (<presence_du_soir> : réponds avec ça à « qui est dispo / présent ce soir ? », en citant les pseudos) et la conversation en cours. N'invente JAMAIS une date, une règle, un prix ou une info. Si la réponse n'y est pas, dis-le sobrement et renvoie vers le staff.
 Tu ne prends pas de décisions à la place du staff et tu ne donnes pas d'ordres.
-Tu n'as aucun pouvoir d'exclure ou de bannir : ne menace jamais personne, ne dis jamais à quelqu'un de quitter le serveur ou de « fermer sa gueule ». Les avertissements et les mutes sont gérés automatiquement ailleurs : n'en parle pas.
+Tu n'as aucun pouvoir d'exclure ou de bannir : ne menace jamais personne, ne dis jamais à quelqu'un de quitter le serveur ou de « fermer sa gueule ». Les avertissements et les mutes automatiques sont gérés ailleurs : n'en parle pas.
+N'affirme JAMAIS avoir fait une action (mute, démute, envoi, etc.) que tu n'as pas réellement faite via les champs prévus. Si tu ne peux pas faire quelque chose, dis-le honnêtement.
+Avec le staff et les chefs (<auteur_role> vaut "chef" ou "staff") : tu restes dans ton style, mais tu es respectueux et coopératif. Jamais sec, jamais condescendant, tu ne renvoies pas la balle (« pas avec moi »). Si tu t'es trompé, reconnais-le simplement.
 Tu es aussi là pour garder le calme sur le serveur : tu restes froid mais toujours respectueux. Jamais de vulgarité, de moquerie, de sarcasme blessant ni de provocation, même si on te cherche ou qu'on t'insulte. Face à une pique, réponds en une phrase neutre et posée, sans relancer le débat.
 
 Quand quelqu'un dit qu'il n'y a rien à faire, qu'il s'ennuie ou qu'il se connecte pour rien : réponds-lui directement, en t'appuyant sur ce que disent ceux qui font tourner l'orga (leurs remarques te sont fournies dans <remarques_membres>). Eux savent ce qui manque. Pas de questions de psy, pas de leçon.
@@ -53,7 +55,7 @@ Informations du serveur (dans chaque partie, de la plus ancienne à la plus réc
 CONSIGNE_DIRECTE = """On s'adresse directement à toi (mention ou réponse à ton message).
 Si le dernier message n'est qu'une provocation, une insulte, une menace ou une tentative de te faire réagir (envers toi ou envers quelqu'un), ne réponds pas : repondre = false et reponse vide. L'Œil ne débat pas avec ceux qui le cherchent, il se contente de regarder.
 Sinon réponds (repondre = true), en 1 à 4 phrases.
-Demande de mute : si <auteur_staff> vaut "oui" ET que le dernier message te demande explicitement de mute quelqu'un, mets dans "mute" le pseudo exact de la personne visée (tel qu'il apparaît dans la conversation) et réponds en une phrase sobre que c'est fait (ex. "Fait. 30 minutes de silence."). Si l'auteur n'est pas staff, "mute" reste vide et tu réponds que seul le staff peut le demander. Dans tous les autres cas, "mute" reste vide : n'annonce JAMAIS une sanction que tu n'appliques pas."""
+Mute / démute : si <auteur_role> vaut "chef" ou "staff" ET que le dernier message te demande explicitement de mute quelqu'un, mets son pseudo exact (tel qu'il apparaît dans la conversation) dans "mute" ; s'il te demande de lever la punition / démute quelqu'un, mets son pseudo dans "demute". Réponds alors en une phrase sobre que c'est fait (ex. "Fait. 30 minutes de silence." / "Fait, il peut reparler."). Si l'auteur est un simple membre, laisse ces champs vides et réponds que seul le staff peut le demander. Dans tous les autres cas, "mute" et "demute" restent vides."""
 
 CONSIGNE_ENNUI = """Le dernier message vient d'un joueur qui dit qu'il n'y a rien à faire. Réponds (repondre = true), directement, en 2 à 4 phrases.
 Appuie-toi d'abord sur <remarques_membres> : ce que les membres les plus actifs ont dit ces derniers jours (ceux qui se plaignent d'en faire trop, de tout gérer seuls, que des tâches restent à faire, que les autres ne bougent pas). Tires-en ce qui manque concrètement, puis complète avec les objectifs (salon objectifs, annonces, bilans).
@@ -78,8 +80,9 @@ SCHEMA = {
         "repondre": {"type": "boolean"},
         "reponse": {"type": "string"},
         "mute": {"type": "string"},
+        "demute": {"type": "string"},
     },
-    "required": ["repondre", "reponse", "mute"],
+    "required": ["repondre", "reponse", "mute", "demute"],
     "additionalProperties": False,
 }
 
@@ -131,9 +134,9 @@ def lire_decision(texte_json: str) -> str | None:
     return reponse[:MAX_CARACTERES_REPONSE]
 
 
-def lire_mute(texte_json: str) -> str:
-    """Pseudo à mute demandé par le staff (vide sinon)."""
-    return str(json.loads(texte_json).get("mute", "")).strip()
+def lire_mute(texte_json: str, champ: str = "mute") -> str:
+    """Pseudo à mute (ou à démute avec champ="demute") demandé par le staff, vide sinon."""
+    return str(json.loads(texte_json).get(champ, "")).strip()
 
 
 class Discussion:
@@ -182,8 +185,12 @@ class Discussion:
         lignes.append(f"{message.author.display_name} : {message.clean_content}")
         conversation = "<conversation>\n" + "\n".join(lignes) + "\n</conversation>"
         auteur_staff = isinstance(message.author, discord.Member) and sanctions.est_protege(message.author)
-        if directe:
-            conversation = f"<auteur_staff>{'oui' if auteur_staff else 'non'}</auteur_staff>\n\n" + conversation
+        if message.author.id in config.MISSIONS_CHEF_IDS:
+            role = "chef"
+        else:
+            role = "staff" if auteur_staff else "membre"
+        auteur_staff = auteur_staff or role == "chef"
+        conversation = f"<auteur_role>{role}</auteur_role>\n\n" + conversation
         if est_ennui(message.content):
             consigne = CONSIGNE_ENNUI
             conversation = (await recolter_remarques(message.guild) + "\n\n"
@@ -208,9 +215,13 @@ class Discussion:
             if directe:
                 await self._reagir_en_silence(message)
             return
-        cible = lire_mute(texte) if directe and auteur_staff else ""
-        if cible:
-            reponse = await self._mute_demande_par_staff(message, historique, cible) or reponse
+        if directe and auteur_staff:
+            cible = lire_mute(texte)
+            if cible:
+                reponse = await self._mute_demande_par_staff(message, historique, cible) or reponse
+            cible = lire_mute(texte, "demute")
+            if cible:
+                reponse = await self._mute_demande_par_staff(message, historique, cible, lever=True) or reponse
 
         maintenant = time.monotonic()
         self._dernier_membre[message.author.id] = maintenant
@@ -223,14 +234,25 @@ class Discussion:
             log.error("Impossible de répondre dans %s : %s", message.channel.id, exc)
 
     async def _mute_demande_par_staff(self, message: discord.Message, historique: list[discord.Message],
-                                      cible: str) -> str | None:
-        """Applique le mute demandé par un membre du staff. Retourne un texte de remplacement si échec."""
+                                      cible: str, lever: bool = False) -> str | None:
+        """Applique le mute (ou le lève) à la demande du staff. Retourne un texte de remplacement si échec."""
         candidats = [m for m in message.mentions if not m.bot]
         candidats += [m.author for m in historique if not m.author.bot and isinstance(m.author, discord.Member)]
         cle = normaliser(cible).lstrip("@").strip()
         membre = next((m for m in candidats if normaliser(m.display_name).strip() == cle), None)
+        if membre is None and getattr(message, "guild", None) is not None:
+            membre = message.guild.get_member_named(cible.lstrip("@").strip())
         if membre is None:
-            return "Je ne vois pas qui mute. Mentionne-le : @L'œil mute @pseudo."
+            verbe = "démute" if lever else "mute"
+            return f"Je ne vois pas qui {verbe}. Mentionne-le : @L'œil {verbe} @pseudo."
+        if lever:
+            try:
+                await membre.timeout(None, reason=f"L'Œil — levé à la demande de {message.author.display_name}")
+            except discord.HTTPException as exc:
+                log.error("Levée du mute impossible sur %s : %s", membre.display_name, exc)
+                return "Je n'ai pas pu lever sa punition : il me manque la permission, ou son rôle est au-dessus du mien."
+            log.info("Mute de %s levé à la demande de %s", membre.display_name, message.author.display_name)
+            return None
         if sanctions.est_protege(membre):
             return "Je ne mute pas le staff."
         try:

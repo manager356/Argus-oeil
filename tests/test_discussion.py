@@ -139,3 +139,16 @@ def test_mute_demande_par_staff(monkeypatch):
     chef = _membre("Armand", staff=True)
     assert asyncio.run(d._mute_demande_par_staff(message, [SimpleNamespace(author=chef)], "Armand")) == \
         "Je ne mute pas le staff."
+
+
+def test_demute_demande_par_staff(monkeypatch):
+    from loeil.discussion import lire_mute
+    assert lire_mute('{"mute": "", "demute": "BlackSky16"}', "demute") == "BlackSky16"
+    d = Discussion({"annonces": MemoireAnnonces()}, client=object())
+    puni = _membre("BlackSky16")
+    monkeypatch.setattr(discussion.discord, "Member", SimpleNamespace)
+    message = SimpleNamespace(mentions=[], author=SimpleNamespace(display_name="Armand"),
+                              guild=SimpleNamespace(get_member_named=lambda n: puni if n == "BlackSky16" else None))
+    assert asyncio.run(d._mute_demande_par_staff(message, [], "BlackSky16", lever=True)) is None
+    puni.timeout.assert_awaited_once()
+    assert puni.timeout.call_args.args[0] is None
