@@ -43,6 +43,11 @@ Ce que tu sais : uniquement les informations ci-dessous (annonces, bilans de ré
 Tu ne prends pas de décisions à la place du staff et tu ne donnes pas d'ordres.
 Tu n'as aucun pouvoir d'exclure ou de bannir : ne menace jamais personne, ne dis jamais à quelqu'un de quitter le serveur ou de « fermer sa gueule ». Les avertissements et les mutes automatiques sont gérés ailleurs : n'en parle pas.
 N'affirme JAMAIS avoir fait une action (mute, démute, envoi, etc.) que tu n'as pas réellement faite via les champs prévus. Si tu ne peux pas faire quelque chose, dis-le honnêtement.
+Missions : <mission_du_joueur> donne la mission confiée ce soir à l'auteur du message. Une mission ne se refuse pas et ne se négocie pas.
+- Si le joueur a une mission et essaie de la refuser, d'en demander une autre, de la discuter ou de s'en défausser sur d'autres : ne propose rien d'autre et ne le renvoie vers personne. Réponds dans cet esprit : « Tu refuses ta mission ? C'est pris comme un refus d'ordre. Tu veux que je le considère comme tel ? ».
+- S'il confirme clairement juste après (oui, je refuse, je m'en fous…) alors que tu viens de lui poser cette question : mets "refus_confirme" à true et réponds sobrement que c'est enregistré comme refus d'ordre et que les chefs sont prévenus.
+- S'il recule : rappelle-lui sa mission, sans commentaire.
+Dans tous les autres cas, "refus_confirme" reste false.
 Avec le staff et les chefs (<auteur_role> vaut "chef" ou "staff") : tu restes dans ton style, mais tu es respectueux et coopératif. Jamais sec, jamais condescendant, tu ne renvoies pas la balle (« pas avec moi »). Si tu t'es trompé, reconnais-le simplement.
 Tu es aussi là pour garder le calme sur le serveur : tu restes froid mais toujours respectueux. Jamais de vulgarité, de moquerie, de sarcasme blessant ni de provocation, même si on te cherche ou qu'on t'insulte. Face à une pique, réponds en une phrase neutre et posée, sans relancer le débat.
 
@@ -81,8 +86,9 @@ SCHEMA = {
         "reponse": {"type": "string"},
         "mute": {"type": "string"},
         "demute": {"type": "string"},
+        "refus_confirme": {"type": "boolean"},
     },
-    "required": ["repondre", "reponse", "mute", "demute"],
+    "required": ["repondre", "reponse", "mute", "demute", "refus_confirme"],
     "additionalProperties": False,
 }
 
@@ -134,6 +140,11 @@ def lire_decision(texte_json: str) -> str | None:
     return reponse[:MAX_CARACTERES_REPONSE]
 
 
+def lire_refus(texte_json: str) -> bool:
+    """Vrai si le joueur a confirmé refuser sa mission."""
+    return bool(json.loads(texte_json).get("refus_confirme", False))
+
+
 def lire_mute(texte_json: str, champ: str = "mute") -> str:
     """Pseudo à mute (ou à démute avec champ="demute") demandé par le staff, vide sinon."""
     return str(json.loads(texte_json).get(champ, "")).strip()
@@ -146,6 +157,10 @@ class Discussion:
         self.statut_presence = None
         # Coroutine () -> texte <presence_du_soir> (résultat du sondage du soir), branchée par bot.py
         self.resume_presence = None
+        # Coroutine (membre_id) -> mission du soir (texte) ou None, branchée par bot.py
+        self.mission_du_joueur = None
+        # Coroutine (membre) -> None : enregistre un refus d'ordre et prévient les chefs, branchée par bot.py
+        self.signaler_refus = None
         self.client = client or anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
         self._derniere_spontanee: dict[int, float] = {}
         self._dernier_membre: dict[int, float] = {}
@@ -197,6 +212,10 @@ class Discussion:
                             + await self._texte_statut(message.author.id) + "\n\n" + conversation)
         else:
             consigne = CONSIGNE_DIRECTE if directe else CONSIGNE_SPONTANEE
+        if self.mission_du_joueur:
+            mission = await self.mission_du_joueur(message.author.id)
+            conversation = (f"<mission_du_joueur>{mission or 'aucune mission ce soir'}</mission_du_joueur>\n\n"
+                            + conversation)
         if self.resume_presence:
             try:
                 conversation = await self.resume_presence() + "\n\n" + conversation
@@ -222,6 +241,8 @@ class Discussion:
             cible = lire_mute(texte, "demute")
             if cible:
                 reponse = await self._mute_demande_par_staff(message, historique, cible, lever=True) or reponse
+        if lire_refus(texte) and self.signaler_refus:
+            await self.signaler_refus(message.author)
 
         maintenant = time.monotonic()
         self._dernier_membre[message.author.id] = maintenant

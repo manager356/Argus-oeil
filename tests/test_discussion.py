@@ -152,3 +152,10 @@ def test_demute_demande_par_staff(monkeypatch):
     assert asyncio.run(d._mute_demande_par_staff(message, [], "BlackSky16", lever=True)) is None
     puni.timeout.assert_awaited_once()
     assert puni.timeout.call_args.args[0] is None
+
+
+def test_lire_refus():
+    from loeil.discussion import lire_refus
+    assert lire_refus('{"refus_confirme": true}') is True
+    assert lire_refus('{"refus_confirme": false}') is False
+    assert lire_refus('{}') is False

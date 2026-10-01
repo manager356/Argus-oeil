@@ -125,3 +125,18 @@ def test_relance_seulement_les_missions_en_cours(tmp_path):
 
 def test_date_du_rapport_a_minuit():
     assert date_soiree(datetime(2026, 10, 2, 0, 0, tzinfo=PARIS)) == date(2026, 10, 1)
+
+
+def test_refus_compte_a_part_dans_le_rapport(tmp_path):
+    s = StockageMissions(tmp_path / "m.json")
+    jour = date(2026, 10, 1)
+    s.ajouter(jour, 1, "BlackSky16", "percuteurs", "Armand")
+    s.ajouter(jour, 2, "Rosita", "Devils", "Armand")
+    s.statuer(jour, 1, missions.REFUS)
+    soiree = s.soiree(jour)
+    ok, ko, attente, _ = lignes_rapport(soiree, {})
+    assert attente == ["**Rosita** — Devils"]
+    assert missions.lignes_refus(soiree) == ["**BlackSky16** — percuteurs"]
+    noms = [f.name for f in embed_rapport(jour, soiree, {}).fields]
+    assert "🚫 Refus d'ordre (1)" in noms
+    assert [m for m, _ in missions.a_relancer(soiree)] == [2]  # pas de relance pour un refus

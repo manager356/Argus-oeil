@@ -14,7 +14,7 @@ from loeil.tension import normaliser
 log = logging.getLogger("loeil.missions")
 
 FUSEAU = ZoneInfo("Europe/Paris")
-EN_COURS, ACCOMPLIE, RATEE = "en_cours", "ok", "ko"
+EN_COURS, ACCOMPLIE, RATEE, REFUS = "en_cours", "ok", "ko", "refus"
 MAX_JOURS_GARDES = 14
 
 # Retourne {membre_id: pseudo} des présents (et peut-être) du sondage du soir.
@@ -108,12 +108,18 @@ def lignes_rapport(missions: dict[str, dict], presents: dict[int, str]) -> tuple
         ligne = f"**{entree['nom']}** — {entree['mission']}"
         if entree["statut"] == ACCOMPLIE:
             ok.append(ligne)
+        elif entree["statut"] == REFUS:
+            continue  # compté à part, voir lignes_refus
         elif entree["statut"] == RATEE:
             ko.append(ligne + (f" _({entree['commentaire']})_" if entree["commentaire"] else ""))
         else:
             attente.append(ligne)
     sans_mission = [nom for membre_id, nom in presents.items() if str(membre_id) not in missions]
     return ok, ko, attente, sans_mission
+
+
+def lignes_refus(missions: dict[str, dict]) -> list[str]:
+    return [f"**{e['nom']}** — {e['mission']}" for e in missions.values() if e["statut"] == REFUS]
 
 
 def _champ(lignes: list[str]) -> str:
@@ -130,6 +136,9 @@ def embed_rapport(jour: date, missions: dict[str, dict], presents: dict[int, str
     )
     embed.add_field(name=f"✅ Accomplies ({len(ok)})", value=_champ(ok), inline=False)
     embed.add_field(name=f"❌ Pas faites ({len(ko)})", value=_champ(ko), inline=False)
+    refus = lignes_refus(missions)
+    if refus:
+        embed.add_field(name=f"🚫 Refus d'ordre ({len(refus)})", value=_champ(refus), inline=False)
     embed.add_field(name=f"⏳ Sans réponse ({len(attente)})", value=_champ(attente), inline=False)
     embed.add_field(name=f"👤 Présents sans mission ({len(sans_mission)})", value=_champ(sans_mission), inline=False)
     return embed
@@ -138,7 +147,8 @@ def embed_rapport(jour: date, missions: dict[str, dict], presents: dict[int, str
 # --- Discord ------------------------------------------------------------------------
 
 def embed_mission(jour: date, mission: str, par: str, statut: str = EN_COURS, commentaire: str = "") -> discord.Embed:
-    couleurs = {EN_COURS: discord.Color.gold(), ACCOMPLIE: discord.Color.green(), RATEE: discord.Color.red()}
+    couleurs = {EN_COURS: discord.Color.gold(), ACCOMPLIE: discord.Color.green(), RATEE: discord.Color.red(),
+                REFUS: discord.Color.dark_red()}
     embed = discord.Embed(title="🎯 Ta mission de ce soir", description=mission, color=couleurs[statut])
     embed.add_field(name="Donnée par", value=par, inline=True)
     if statut == ACCOMPLIE:

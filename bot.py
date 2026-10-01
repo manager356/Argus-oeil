@@ -165,6 +165,49 @@ _discussion.statut_presence = statut_presence
 _discussion.resume_presence = resume_presence
 
 
+async def mission_du_joueur(membre_id: int) -> str:
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    entree = _stockage_missions.soiree(jour).get(str(membre_id))
+    if entree:
+        return entree["mission"]
+    # Missions perdues après un redéploiement : le récap des annonces fait foi.
+    return "aucune mission enregistrée pour lui (regarde le récap « Missions du soir » dans les annonces)"
+
+
+async def signaler_refus(membre: discord.abc.User) -> None:
+    """Refus d'ordre confirmé : on l'enregistre et on prévient les chefs + le salon staff."""
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    entree = _stockage_missions.soiree(jour).get(str(membre.id))
+    if entree is None:  # missions perdues (redéploiement sans Volume) : on signale quand même
+        entree = {"nom": membre.display_name, "mission": "(voir le récap des missions dans les annonces)", "par": "?"}
+    _stockage_missions.statuer(jour, membre.id, missions.REFUS, mission=entree["mission"], nom=entree["nom"])
+    embed = discord.Embed(
+        title="🚫 Refus d'ordre",
+        description=f"{membre.mention} (**{entree['nom']}**) a refusé sa mission et a confirmé.",
+        color=discord.Color.dark_red(),
+    )
+    embed.add_field(name="Mission", value=entree["mission"][:1024], inline=False)
+    embed.add_field(name="Donnée par", value=entree["par"], inline=True)
+    cibles = []
+    salon_staff = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0)
+    if salon_staff:
+        cibles.append(salon_staff)
+    for chef_id in config.MISSIONS_CHEF_IDS:
+        try:
+            cibles.append(bot.get_user(chef_id) or await bot.fetch_user(chef_id))
+        except discord.HTTPException:
+            pass
+    for cible in cibles:
+        try:
+            await cible.send(embed=embed)
+        except discord.HTTPException as exc:
+            log.error("Refus d'ordre non signalé à %s : %s", cible, exc)
+
+
+_discussion.mission_du_joueur = mission_du_joueur
+_discussion.signaler_refus = signaler_refus
+
+
 async def envoyer_presents_aux_chefs(destinataires: list[int]) -> str:
     jour = missions.date_soiree(datetime.now(FUSEAU))
     resultat = await charger_presents(jour)
