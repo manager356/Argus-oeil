@@ -193,3 +193,32 @@ def test_insulte_envers_l_oeil_mute_direct(monkeypatch):
     asyncio.run(d._sanctionner_insulte(message_staff))
     staff.timeout.assert_not_called()
     message_staff.add_reaction.assert_awaited_once_with("👁️")
+
+
+def test_le_lead_a_toujours_une_reponse(monkeypatch):
+    monkeypatch.setattr(discussion.config, "MISSIONS_CHEF_IDS", [1140051323820187789])
+    reponses = iter(['{"repondre": false, "reponse": "", "mute": "", "demute": "", "refus_confirme": false, "insulte_oeil": true}',
+                     '{"repondre": true, "reponse": "Je t\u0027écoute.", "mute": "", "demute": "", "refus_confirme": false, "insulte_oeil": false}'])
+    consignes = []
+
+    async def faux_appel(conversation, consigne):
+        consignes.append(consigne)
+        return next(reponses)
+
+    d = Discussion({"annonces": MemoireAnnonces()}, client=object())
+    d._appeler_ia = faux_appel
+
+    async def historique(**_):
+        return
+        yield
+
+    lead = SimpleNamespace(id=1140051323820187789, display_name="Armand", guild_permissions=discord.Permissions())
+    message = SimpleNamespace(author=lead, content="T'inquiète je vais t'apprendre fils", clean_content="x",
+                              channel=SimpleNamespace(id=5, history=historique), reply=AsyncMock(),
+                              add_reaction=AsyncMock(), guild=None)
+    for _ in range(discussion.MAX_REPONSES_MEMBRE + 1):
+        d._reponses_membre.setdefault(lead.id, []).append(discussion.time.monotonic())
+    asyncio.run(d.repondre(message, SimpleNamespace(id=999), directe=True))
+    assert len(consignes) == 2 and "autorité suprême" in consignes[1]
+    message.reply.assert_awaited_once()
+    message.add_reaction.assert_not_called()
