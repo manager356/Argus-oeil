@@ -38,6 +38,7 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 | `MISSIONS_HOUR` | — | Envoi de la liste des présents, `20:00` par défaut |
 | `RELANCE_HOUR` | — | Rappel aux joueurs qui n'ont pas validé, `23:00` par défaut |
 | `RAPPORT_HOUR` | — | Rapport des missions, `00:00` par défaut |
+| `LEAD_IDS` | — | ID des leads (virgules) : réponse toujours garantie, jamais sanctionnés (les chefs des missions en font partie) |
 | `SANCTIONS_ENABLED` | — | `0` pour couper avertissements et mutes |
 | `MUTE_MINUTES` | — | Durée du mute, `30` par défaut |
 | `AVERTISSEMENT_HEURES` | — | Durée de validité d'un avertissement, `24` par défaut |

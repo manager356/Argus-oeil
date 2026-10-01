@@ -196,7 +196,7 @@ def test_insulte_envers_l_oeil_mute_direct(monkeypatch):
 
 
 def test_le_lead_a_toujours_une_reponse(monkeypatch):
-    monkeypatch.setattr(discussion.config, "MISSIONS_CHEF_IDS", [1140051323820187789])
+    monkeypatch.setattr(discussion.config, "LEAD_IDS", {1140051323820187789})
     reponses = iter(['{"repondre": false, "reponse": "", "mute": "", "demute": "", "refus_confirme": false, "insulte_oeil": true}',
                      '{"repondre": true, "reponse": "Je t\u0027écoute.", "mute": "", "demute": "", "refus_confirme": false, "insulte_oeil": false}'])
     consignes = []
@@ -219,6 +219,6 @@ def test_le_lead_a_toujours_une_reponse(monkeypatch):
     for _ in range(discussion.MAX_REPONSES_MEMBRE + 1):
         d._reponses_membre.setdefault(lead.id, []).append(discussion.time.monotonic())
     asyncio.run(d.repondre(message, SimpleNamespace(id=999), directe=True))
-    assert len(consignes) == 2 and "autorité suprême" in consignes[1]
+    assert len(consignes) == 2 and "TOUJOURS" in consignes[1]
     message.reply.assert_awaited_once()
     message.add_reaction.assert_not_called()

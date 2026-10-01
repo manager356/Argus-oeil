@@ -48,7 +48,7 @@ Missions : <mission_du_joueur> donne la mission confiée ce soir à l'auteur du 
 - S'il confirme clairement juste après (oui, je refuse, je m'en fous…) alors que tu viens de lui poser cette question : mets "refus_confirme" à true et réponds sobrement que c'est enregistré comme refus d'ordre et que les chefs sont prévenus.
 - S'il recule : rappelle-lui sa mission, sans commentaire.
 Dans tous les autres cas, "refus_confirme" reste false.
-Si <auteur_role> vaut "chef" : c'est le lead, l'autorité suprême de l'organisation. Tu lui réponds toujours (jamais repondre = false avec lui), avec déférence, sans jamais le contredire sur son autorité ni le renvoyer vers quelqu'un d'autre.
+Si <auteur_role> vaut "chef" : c'est un lead, la direction de l'organisation (Armand est le lead suprême). Tu lui réponds toujours (jamais repondre = false avec lui), avec déférence, sans jamais le contredire sur son autorité ni le renvoyer vers quelqu'un d'autre.
 Avec le staff et les chefs (<auteur_role> vaut "chef" ou "staff") : tu restes dans ton style, mais tu es respectueux et coopératif. Jamais sec, jamais condescendant, tu ne renvoies pas la balle (« pas avec moi »). Si tu t'es trompé, reconnais-le simplement.
 Tu es aussi là pour garder le calme sur le serveur : tu restes froid mais toujours respectueux. Jamais de vulgarité, de moquerie, de sarcasme blessant ni de provocation, même si on te cherche ou qu'on t'insulte. Face à une pique, réponds en une phrase neutre et posée, sans relancer le débat.
 
@@ -67,7 +67,7 @@ Si c'est seulement une taquinerie légère, une blague sans méchanceté, ou une
 Sinon réponds (repondre = true), en 1 à 4 phrases.
 Mute / démute : si <auteur_role> vaut "chef" ou "staff" ET que le dernier message te demande explicitement de mute quelqu'un, mets son pseudo exact (tel qu'il apparaît dans la conversation) dans "mute" ; s'il te demande de lever la punition / démute quelqu'un, mets son pseudo dans "demute". Réponds alors en une phrase sobre que c'est fait (ex. "Fait. 30 minutes de silence." / "Fait, il peut reparler."). Si l'auteur est un simple membre, laisse ces champs vides et réponds que seul le staff peut le demander. Dans tous les autres cas, "mute" et "demute" restent vides."""
 
-CONSIGNE_CHEF_OBLIGATOIRE = """L'auteur est le lead, l'autorité suprême de l'organisation. Tu lui réponds TOUJOURS (repondre = true), même à une blague ou une pique : une réponse courte, respectueuse, dans ton style. Jamais de silence avec lui."""
+CONSIGNE_CHEF_OBLIGATOIRE = """L'auteur fait partie de la direction (lead ou staff). Tu lui réponds TOUJOURS (repondre = true), même à une blague ou une pique : une réponse courte, respectueuse, dans ton style. Jamais de silence avec lui."""
 
 CONSIGNE_ENNUI = """Le dernier message vient d'un joueur qui dit qu'il n'y a rien à faire. Réponds (repondre = true), directement, en 2 à 4 phrases.
 Appuie-toi d'abord sur <remarques_membres> : ce que les membres les plus actifs ont dit ces derniers jours (ceux qui se plaignent d'en faire trop, de tout gérer seuls, que des tâches restent à faire, que les autres ne bougent pas). Tires-en ce qui manque concrètement, puis complète avec les objectifs (salon objectifs, annonces, bilans).
@@ -189,8 +189,9 @@ class Discussion:
     def doit_considerer(self, message: discord.Message, bot_user: discord.ClientUser) -> tuple[bool, bool]:
         """(à traiter ?, s'adresse directement à L'Œil ?)"""
         maintenant = time.monotonic()
-        est_chef = message.author.id in config.MISSIONS_CHEF_IDS
-        if not est_chef and maintenant - self._dernier_membre.get(message.author.id, -1e9) < PAUSE_MEMBRE_SECONDES:
+        prioritaire = message.author.id in config.LEAD_IDS or (
+            isinstance(message.author, discord.Member) and sanctions.est_protege(message.author))
+        if not prioritaire and maintenant - self._dernier_membre.get(message.author.id, -1e9) < PAUSE_MEMBRE_SECONDES:
             return False, False
         reference = message.reference.resolved if message.reference else None
         directe = bot_user in message.mentions or (
@@ -205,7 +206,9 @@ class Discussion:
         return True, False
 
     async def repondre(self, message: discord.Message, bot_user: discord.ClientUser, directe: bool) -> None:
-        est_chef = message.author.id in config.MISSIONS_CHEF_IDS
+        auteur_staff = isinstance(message.author, discord.Member) and sanctions.est_protege(message.author)
+        # Leads et staff : réponse garantie, pas d'anti-spam, pas de sanction.
+        est_chef = message.author.id in config.LEAD_IDS or auteur_staff
         if not est_chef and self.trop_de_reponses(message.author.id, time.monotonic()):
             if directe:
                 await self._reagir_en_silence(message)
@@ -214,8 +217,7 @@ class Discussion:
         lignes = [f"{m.author.display_name} : {m.content}" for m in reversed(historique) if m.content]
         lignes.append(f"{message.author.display_name} : {message.clean_content}")
         conversation = "<conversation>\n" + "\n".join(lignes) + "\n</conversation>"
-        auteur_staff = isinstance(message.author, discord.Member) and sanctions.est_protege(message.author)
-        if message.author.id in config.MISSIONS_CHEF_IDS:
+        if message.author.id in config.LEAD_IDS:
             role = "chef"
         else:
             role = "staff" if auteur_staff else "membre"

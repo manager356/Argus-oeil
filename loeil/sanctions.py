@@ -42,7 +42,7 @@ def ids_des_pseudos(pseudos: list[str], messages: list[Message]) -> list[int]:
 
 def est_protege(membre: discord.Member) -> bool:
     """Le staff et les chefs ne sont jamais sanctionnés par le bot."""
-    if getattr(membre, "id", None) in config.MISSIONS_CHEF_IDS:
+    if getattr(membre, "id", None) in config.LEAD_IDS:
         return True
     perms = membre.guild_permissions
     return perms.administrator or perms.moderate_members or perms.manage_guild
