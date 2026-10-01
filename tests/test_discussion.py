@@ -172,3 +172,24 @@ def test_bilan_en_plusieurs_messages_fusionne():
     m.ajouter(debut + timedelta(hours=2, minutes=1), "Diego", "Bilan de Diego")
     assert [a.contenu for a in m.annonces] == ["Résumé réunion Maldi\nConcernant la drogue", "Autre bilan",
                                                "Bilan de Diego"]
+
+
+def test_insulte_envers_l_oeil_mute_direct(monkeypatch):
+    from loeil.discussion import lire_insulte
+    assert lire_insulte('{"insulte_oeil": true}') is True
+    d = Discussion({"annonces": MemoireAnnonces()}, client=object())
+    monkeypatch.setattr(discussion.discord, "Member", SimpleNamespace)
+    insulteur = SimpleNamespace(display_name="Fluxy", mention="<@7>", guild_permissions=discord.Permissions(),
+                                timeout=AsyncMock())
+    message = SimpleNamespace(author=insulteur, reply=AsyncMock(), add_reaction=AsyncMock(), content="ptite lopsa",
+                              guild=None, channel=SimpleNamespace(mention="#discu"), jump_url="url")
+    asyncio.run(d._sanctionner_insulte(message))
+    insulteur.timeout.assert_awaited_once()
+    assert "30 minutes de silence" in message.reply.call_args.args[0]
+
+    staff = SimpleNamespace(display_name="Armand", mention="<@8>",
+                            guild_permissions=discord.Permissions(manage_guild=True), timeout=AsyncMock())
+    message_staff = SimpleNamespace(author=staff, reply=AsyncMock(), add_reaction=AsyncMock())
+    asyncio.run(d._sanctionner_insulte(message_staff))
+    staff.timeout.assert_not_called()
+    message_staff.add_reaction.assert_awaited_once_with("👁️")

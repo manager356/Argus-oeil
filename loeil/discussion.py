@@ -61,7 +61,8 @@ Informations du serveur. Dans chaque partie, les entrées vont de la plus récen
 {sources}"""
 
 CONSIGNE_DIRECTE = """On s'adresse directement à toi (mention ou réponse à ton message).
-Si le dernier message n'est qu'une provocation, une insulte, une menace ou une tentative de te faire réagir (envers toi ou envers quelqu'un), ne réponds pas : repondre = false et reponse vide. L'Œil ne débat pas avec ceux qui le cherchent, il se contente de regarder.
+Si le dernier message t'insulte ou te manque clairement de respect (insulte, rabaissement, provocation agressive, menace envers toi) : mets "insulte_oeil" à true, repondre = false et reponse vide. L'Œil ne débat pas : il sanctionne.
+Si c'est seulement une taquinerie légère, une blague sans méchanceté, ou une provocation envers quelqu'un d'autre : ne réponds pas non plus (repondre = false), mais "insulte_oeil" reste false.
 Sinon réponds (repondre = true), en 1 à 4 phrases.
 Mute / démute : si <auteur_role> vaut "chef" ou "staff" ET que le dernier message te demande explicitement de mute quelqu'un, mets son pseudo exact (tel qu'il apparaît dans la conversation) dans "mute" ; s'il te demande de lever la punition / démute quelqu'un, mets son pseudo dans "demute". Réponds alors en une phrase sobre que c'est fait (ex. "Fait. 30 minutes de silence." / "Fait, il peut reparler."). Si l'auteur est un simple membre, laisse ces champs vides et réponds que seul le staff peut le demander. Dans tous les autres cas, "mute" et "demute" restent vides."""
 
@@ -90,8 +91,9 @@ SCHEMA = {
         "mute": {"type": "string"},
         "demute": {"type": "string"},
         "refus_confirme": {"type": "boolean"},
+        "insulte_oeil": {"type": "boolean"},
     },
-    "required": ["repondre", "reponse", "mute", "demute", "refus_confirme"],
+    "required": ["repondre", "reponse", "mute", "demute", "refus_confirme", "insulte_oeil"],
     "additionalProperties": False,
 }
 
@@ -141,6 +143,11 @@ def lire_decision(texte_json: str) -> str | None:
     if not data.get("repondre") or not reponse:
         return None
     return reponse[:MAX_CARACTERES_REPONSE]
+
+
+def lire_insulte(texte_json: str) -> bool:
+    """Vrai si le message insulte L'Œil (mute immédiat)."""
+    return bool(json.loads(texte_json).get("insulte_oeil", False))
 
 
 def lire_refus(texte_json: str) -> bool:
@@ -233,6 +240,9 @@ class Discussion:
         except (json.JSONDecodeError, AttributeError):
             log.error("Réponse IA illisible : %r", texte[:200])
             return
+        if directe and lire_insulte(texte):
+            await self._sanctionner_insulte(message)
+            return
         if reponse is None:
             if directe:
                 await self._reagir_en_silence(message)
@@ -288,6 +298,38 @@ class Discussion:
         log.info("Mute %s min de %s demandé par %s", config.MUTE_MINUTES, membre.display_name,
                  message.author.display_name)
         return None
+
+    async def _sanctionner_insulte(self, message: discord.Message) -> None:
+        """Insulte envers L'Œil : mute immédiat (sauf staff, qu'on se contente de regarder)."""
+        membre = message.author
+        if not isinstance(membre, discord.Member) or sanctions.est_protege(membre):
+            await self._reagir_en_silence(message)
+            return
+        minutes = config.MUTE_MINUTES
+        try:
+            await membre.timeout(timedelta(minutes=minutes), reason="L'Œil — insulte envers le bot")
+        except discord.HTTPException as exc:
+            log.error("Mute pour insulte impossible sur %s : %s", membre.display_name, exc)
+            await self._reagir_en_silence(message)
+            return
+        log.info("Mute %s min de %s (insulte envers L'Œil)", minutes, membre.display_name)
+        try:
+            await message.reply(f"🔇 {membre.mention}, {minutes} minutes de silence. Le respect vaut aussi pour moi.",
+                                mention_author=False, allowed_mentions=discord.AllowedMentions(users=[membre]))
+        except discord.HTTPException:
+            pass
+        salon_staff = message.guild.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0) if message.guild else None
+        if salon_staff:
+            embed = discord.Embed(title=f"🔇 Mute {minutes} min — insulte envers L'Œil",
+                                  description=f"{membre.mention} dans {message.channel.mention}",
+                                  color=discord.Color.red())
+            embed.add_field(name="Message", value=message.content[:1024] or "—", inline=False)
+            embed.add_field(name="Lien", value=f"[Aller voir]({message.jump_url})", inline=False)
+            embed.set_footer(text="Pour lever : @L'œil démute <pseudo>, ou clic droit → Retirer l'exclusion temporaire.")
+            try:
+                await salon_staff.send(embed=embed)
+            except discord.HTTPException as exc:
+                log.error("Alerte staff (insulte) impossible : %s", exc)
 
     async def _reagir_en_silence(self, message: discord.Message) -> None:
         """L'Œil ne débat pas avec ceux qui le cherchent : il regarde, il se tait."""
