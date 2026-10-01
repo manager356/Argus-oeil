@@ -2,6 +2,7 @@ import asyncio
 import json
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import discord
 
@@ -99,3 +100,42 @@ def test_remarques_triees_et_limitees():
     many = [(datetime(2026, 9, 1) + discussion.timedelta(minutes=i), "a", str(i)) for i in range(200)]
     assert formater_remarques(many).count("\n") == discussion.MAX_REMARQUES + 1
     assert "(aucune)" in formater_remarques([])
+
+
+def test_anti_boucle_et_reaction_silencieuse():
+    d = Discussion({"annonces": MemoireAnnonces()}, client=object())
+    for t in range(discussion.MAX_REPONSES_MEMBRE):
+        assert not d.trop_de_reponses(1, 100.0 + t)
+        d._reponses_membre.setdefault(1, []).append(100.0 + t)
+    assert d.trop_de_reponses(1, 110.0)
+    assert not d.trop_de_reponses(1, 100.0 + discussion.FENETRE_REPONSES_SECONDES + 10)
+
+    message = SimpleNamespace(add_reaction=AsyncMock())
+    asyncio.run(d._reagir_en_silence(message))
+    message.add_reaction.assert_awaited_once_with("👁️")
+
+
+def test_lire_mute():
+    from loeil.discussion import lire_mute
+    assert lire_mute('{"repondre": true, "reponse": "Fait.", "mute": " BlackSky16 "}') == "BlackSky16"
+    assert lire_mute('{"repondre": true, "reponse": "x", "mute": ""}') == ""
+
+
+def _membre(nom, staff=False):
+    m = discord.Member.__new__(discord.Member)
+    return SimpleNamespace(display_name=nom, bot=False, guild_permissions=discord.Permissions(moderate_members=staff),
+                           timeout=AsyncMock())
+
+
+def test_mute_demande_par_staff(monkeypatch):
+    d = Discussion({"annonces": MemoireAnnonces()}, client=object())
+    troll = _membre("BlackSky16")
+    monkeypatch.setattr(discussion.discord, "Member", SimpleNamespace)  # les faux membres passent isinstance
+    historique = [SimpleNamespace(author=troll)]
+    message = SimpleNamespace(mentions=[], author=SimpleNamespace(display_name="Rosita"))
+    assert asyncio.run(d._mute_demande_par_staff(message, historique, "blacksky16")) is None
+    troll.timeout.assert_awaited_once()
+    assert "Je ne vois pas" in asyncio.run(d._mute_demande_par_staff(message, historique, "Inconnu"))
+    chef = _membre("Armand", staff=True)
+    assert asyncio.run(d._mute_demande_par_staff(message, [SimpleNamespace(author=chef)], "Armand")) == \
+        "Je ne mute pas le staff."

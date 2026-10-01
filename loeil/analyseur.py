@@ -40,7 +40,8 @@ Si le niveau est 0 ou 1, laisse "message_apaisement" vide.
 
 "irrespectueux" : les pseudos (écrits exactement comme dans la conversation) des joueurs qui ont VRAIMENT manqué de respect à une autre personne, uniquement dans les messages APRÈS la ligne "--- nouveaux messages ---". Ces joueurs recevront un avertissement, puis un mute s'ils recommencent : sois juste et prudent.
 Compte comme manque de respect : insulte ou rabaissement visant réellement quelqu'un, mépris envers un joueur ou le staff, menace, harcèlement, propos discriminatoire.
-Ne compte PAS : le chambrage évident entre potes (ton rieur, "mdr", emojis, l'autre répond sur le même ton), la vulgarité qui ne vise personne, un coup de gueule général, les piques adressées au bot L'Œil.
+Compte aussi : les insultes directes et répétées envers le bot L'Œil (ex. "ta race", "sale merde" adressés à L'Œil), c'est un manque de respect envers l'outil du serveur.
+Ne compte PAS : le chambrage évident entre potes (ton rieur, "mdr", emojis, l'autre répond sur le même ton), la vulgarité qui ne vise personne, un coup de gueule général, une simple pique ou blague isolée envers L'Œil.
 Dans le doute, n'ajoute personne."""
 
 SCHEMA = {

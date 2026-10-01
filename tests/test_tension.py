@@ -55,3 +55,9 @@ def test_historique_limite():
     for i in range(5):
         etat.ajouter(Message("a", str(i), ""), suspect=False)
     assert [m.contenu for m in etat.historique] == ["3", "4"]
+
+
+def test_insultes_du_troll_detectees():
+    for texte in ("ta race en faite", "sale merde", "tue @Bobigny/Rosita", "viens on se regle", "c es toi le probleme"):
+        assert est_suspect(texte, MOTIF), texte
+    assert not est_suspect("tu es dispo ce soir", MOTIF)

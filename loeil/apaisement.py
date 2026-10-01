@@ -37,9 +37,12 @@ async def on_guild_message(bot: discord.Client, message: discord.Message) -> Non
         return
     etat = _etats.setdefault(salon_id, EtatSalon(NB_MESSAGES_CONTEXTE))
     suspect = est_suspect(message.content, _declencheurs)
-    etat.ajouter(
-        Message(message.author.display_name, message.content, message.jump_url, message.author.id), suspect
-    )
+    contenu = message.content
+    reference = message.reference.resolved if message.reference else None
+    if bot.user and (bot.user in message.mentions or
+                     (isinstance(reference, discord.Message) and reference.author.id == bot.user.id)):
+        contenu = f"[adressé à L'Œil] {contenu}"
+    etat.ajouter(Message(message.author.display_name, contenu, message.jump_url, message.author.id), suspect)
 
     # On attend que la conversation se pose : chaque nouveau message repousse l'analyse.
     if etat.suspect:

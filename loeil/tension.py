@@ -16,6 +16,8 @@ MOTS_DECLENCHEURS = [
     "caner", "ban", "quitter le serveur", "va te faire", "fils de", "abruti", "debile",
     "mongol", "clochard", "salope", "pd", "tg", "casse les couilles",
     "rien a branler", "je m'en bats", "degage",
+    "ta race", "sale merde", "sale con", "merde", "tue", "creve", "on se regle", "viens on se",
+    "t'es le probleme", "c'est toi le probleme", "es toi le probleme",
 ]
 
 
