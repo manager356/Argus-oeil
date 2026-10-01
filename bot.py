@@ -103,6 +103,27 @@ def _heure(texte: str) -> time:
 
 async def charger_presents(jour) -> tuple[dict[int, str], dict[int, str]] | None:
     """({id: pseudo} des présents, {id: pseudo} des peut-être) pour le sondage du jour donné."""
+    votes = await charger_votes_noms(jour)
+    return (votes["present"], votes["peutetre"]) if votes else None
+
+
+async def resume_presence() -> str:
+    """Résultat du sondage du soir, donné à L'Œil pour répondre à « qui est dispo ce soir ? »."""
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    votes = await charger_votes_noms(jour)
+    if votes is None:
+        return "<presence_du_soir>Pas encore de sondage de présence pour ce soir (il est posté à " \
+               f"{config.PRESENCE_HOUR}).</presence_du_soir>"
+    lignes = [f"Sondage de présence du {jour:%d/%m} :"]
+    for cle, libelle in (("present", "Présents"), ("peutetre", "Peut-être / en retard"), ("absent", "Absents")):
+        noms = list(votes[cle].values())
+        lignes.append(f"- {libelle} ({len(noms)}) : {', '.join(noms) if noms else 'personne'}")
+    lignes.append("Ceux qui n'apparaissent pas n'ont pas encore voté.")
+    return "<presence_du_soir>\n" + "\n".join(lignes) + "\n</presence_du_soir>"
+
+
+async def charger_votes_noms(jour) -> dict[str, dict[int, str]] | None:
+    """{choix: {id: pseudo}} pour le sondage du jour donné."""
     salon = bot.get_channel(config.PRESENCE_CHANNEL_ID or 0)
     if salon is None or bot.user is None:
         return None
@@ -123,7 +144,7 @@ async def charger_presents(jour) -> tuple[dict[int, str], dict[int, str]] | None
             resultat[membre_id] = membre.display_name
         return resultat
 
-    return await noms(votes["present"]), await noms(votes["peutetre"])
+    return {cle: await noms(ids) for cle, ids in votes.items()}
 
 
 async def statut_presence(membre_id: int) -> str | None:
@@ -139,6 +160,7 @@ async def statut_presence(membre_id: int) -> str | None:
 
 
 _discussion.statut_presence = statut_presence
+_discussion.resume_presence = resume_presence
 
 
 async def envoyer_presents_aux_chefs(destinataires: list[int]) -> str:

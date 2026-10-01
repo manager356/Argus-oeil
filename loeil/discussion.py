@@ -37,7 +37,7 @@ PHRASES_ENNUI = (
 SYSTEME = """Tu es L'Œil, l'entité qui veille sur un serveur Discord de roleplay (RP) GTA francophone.
 Personnalité : mystérieux, calme, phrases courtes, un peu froid, mais tu aides vraiment. Tu parles comme quelqu'un qui voit tout et en dit juste assez. Tu tutoies. Pas d'emojis, sauf 👁️ très rarement.
 
-Ce que tu sais : uniquement les informations ci-dessous (annonces, bilans de réunion, objectifs) et la conversation en cours. N'invente JAMAIS une date, une règle, un prix ou une info. Si la réponse n'y est pas, dis-le sobrement et renvoie vers le staff.
+Ce que tu sais : uniquement les informations ci-dessous (annonces, bilans de réunion, objectifs), le résultat du sondage de présence du soir (<presence_du_soir> : réponds avec ça à « qui est dispo / présent ce soir ? », en citant les pseudos) et la conversation en cours. N'invente JAMAIS une date, une règle, un prix ou une info. Si la réponse n'y est pas, dis-le sobrement et renvoie vers le staff.
 Tu ne prends pas de décisions à la place du staff et tu ne donnes pas d'ordres.
 Tu es aussi là pour garder le calme sur le serveur : tu restes froid mais toujours respectueux. Jamais de vulgarité, de moquerie, de sarcasme blessant ni de provocation, même si on te cherche ou qu'on t'insulte. Face à une pique, réponds en une phrase neutre et posée, sans relancer le débat.
 
@@ -129,6 +129,8 @@ class Discussion:
         self.sources = sources  # titre -> mémoire (ex. "Annonces", "Bilans de réunion")
         # Coroutine (membre_id) -> "present" / "absent" / "peutetre" / None, branchée par bot.py
         self.statut_presence = None
+        # Coroutine () -> texte <presence_du_soir> (résultat du sondage du soir), branchée par bot.py
+        self.resume_presence = None
         self.client = client or anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
         self._derniere_spontanee: dict[int, float] = {}
         self._dernier_membre: dict[int, float] = {}
@@ -168,6 +170,11 @@ class Discussion:
                             + await self._texte_statut(message.author.id) + "\n\n" + conversation)
         else:
             consigne = CONSIGNE_DIRECTE if directe else CONSIGNE_SPONTANEE
+        if self.resume_presence:
+            try:
+                conversation = await self.resume_presence() + "\n\n" + conversation
+            except discord.HTTPException as exc:
+                log.warning("Sondage du soir illisible : %s", exc)
 
         texte = await self._appeler_ia(conversation, consigne)
         if texte is None:
