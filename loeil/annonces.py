@@ -1,5 +1,6 @@
 """Mémoire d'un salon d'infos (annonces, bilans de réunion) : L'Œil s'en sert pour répondre."""
 import logging
+import re
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
@@ -19,13 +20,21 @@ class Annonce:
     contenu: str
 
 
+def remplacer_mentions(texte: str, guild: discord.Guild | None) -> str:
+    """<@123> -> @Pseudo, pour que l'IA sache de qui on parle."""
+    def nom(m: re.Match) -> str:
+        membre = guild.get_member(int(m.group(1))) if guild else None
+        return f"@{membre.display_name}" if membre else m.group(0)
+    return re.sub(r"<@!?(\d+)>", nom, texte)
+
+
 def contenu_message(message: discord.Message) -> str:
     """Texte du message + texte des embeds (beaucoup d'annonces sont en embed)."""
     morceaux = [message.content] if message.content else []
     for embed in message.embeds:
         morceaux += [t for t in (embed.title, embed.description) if t]
         morceaux += [f"{champ.name} : {champ.value}" for champ in embed.fields]
-    return "\n".join(morceaux).strip()
+    return remplacer_mentions("\n".join(morceaux).strip(), message.guild)
 
 
 class MemoireAnnonces:

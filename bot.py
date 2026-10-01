@@ -292,9 +292,9 @@ async def on_ready() -> None:
 
 @bot.event
 async def on_message(message: discord.Message) -> None:
-    if message.guild is None or message.author == bot.user:
+    if message.guild is None:
         return
-    # Les annonces sont parfois postées par des bots : on les lit quand même.
+    # Les annonces sont parfois postées par des bots (ou par L'Œil, ex. récap des missions) : on les lit.
     if message.channel.id in _salons_infos:
         _salons_infos[message.channel.id][1].ajouter_message(message)
         return

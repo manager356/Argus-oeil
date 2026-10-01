@@ -210,6 +210,35 @@ async def envoyer_mission(client: discord.Client, stockage: StockageMissions, jo
     return True
 
 
+def embed_annonce_missions(jour: date, attributions: list[tuple[int, str]], par: str) -> discord.Embed:
+    lignes = [f"<@{membre_id}> — {mission}" for membre_id, mission in attributions]
+    description = "\n".join(lignes)
+    if len(description) > 4000:
+        description = description[:3990] + "\n…"
+    embed = discord.Embed(title=f"🎯 Missions du soir — {jour:%d/%m}", description=description,
+                          color=discord.Color.gold())
+    embed.set_footer(text=f"Distribuées par {par} · Chacun a aussi reçu sa mission en MP")
+    return embed
+
+
+async def annoncer_missions(client: discord.Client, jour: date, attributions: dict[int, str], par: str) -> bool:
+    """Poste dans le salon des annonces qui a quelle mission (et pingue les joueurs)."""
+    salon = client.get_channel(config.ANNONCES_CHANNEL_ID or 0)
+    if salon is None or not attributions:
+        return False
+    mentions = " ".join(f"<@{membre_id}>" for membre_id in attributions)
+    try:
+        await salon.send(
+            content=mentions[:2000],
+            embed=embed_annonce_missions(jour, list(attributions.items()), par),
+            allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+        )
+    except discord.HTTPException as exc:
+        log.error("Annonce des missions impossible : %s", exc)
+        return False
+    return True
+
+
 class ModalMissions(discord.ui.Modal, title="Missions du soir"):
     def __init__(self, client: discord.Client, stockage: StockageMissions, jour: date, presents: dict[int, str]):
         super().__init__()
@@ -231,7 +260,11 @@ class ModalMissions(discord.ui.Modal, title="Missions du soir"):
             ok = await envoyer_mission(self.client, self.stockage, self.jour, membre_id, nom, mission,
                                        interaction.user.display_name)
             (envoyees if ok else echecs).append(nom)
+        annoncee = await annoncer_missions(self.client, self.jour, attributions, interaction.user.display_name)
         lignes = [f"✅ {len(envoyees)} mission(s) envoyée(s) en MP" + (f" : {', '.join(envoyees)}" if envoyees else "")]
+        if attributions:
+            lignes.append("📢 Récap posté dans les annonces." if annoncee else
+                          "⚠️ Récap non posté dans les annonces (salon introuvable ou permission manquante).")
         if echecs:
             lignes.append(f"⚠️ MP fermés, à prévenir toi-même : {', '.join(echecs)}")
         if inconnues:

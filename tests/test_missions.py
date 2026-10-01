@@ -77,3 +77,24 @@ def test_les_vues_se_construisent(tmp_path):
         assert [i.custom_id for i in missions.VueMission(s).children] == ["mission:ok", "mission:ko"]
 
     asyncio.run(scenario())
+
+
+def test_annonce_des_missions():
+    embed = missions.embed_annonce_missions(date(2026, 10, 1), [(1, "percuteurs Lopez"), (2, "voir les Devils")], "Armand")
+    assert embed.title == "🎯 Missions du soir — 01/10"
+    assert embed.description == "<@1> — percuteurs Lopez\n<@2> — voir les Devils"
+
+
+def test_annoncer_missions_poste_et_pingue(monkeypatch):
+    salon = SimpleNamespace(send=AsyncMock())
+    client = SimpleNamespace(get_channel=lambda i: salon)
+    monkeypatch.setattr(missions.config, "ANNONCES_CHANNEL_ID", 42)
+    assert asyncio.run(missions.annoncer_missions(client, date(2026, 10, 1), {1: "a", 2: "b"}, "Armand"))
+    assert salon.send.call_args.kwargs["content"] == "<@1> <@2>"
+    assert not asyncio.run(missions.annoncer_missions(client, date(2026, 10, 1), {}, "Armand"))
+
+
+def test_mentions_remplacees_par_les_pseudos():
+    from loeil.annonces import remplacer_mentions
+    guild = SimpleNamespace(get_member=lambda i: SimpleNamespace(display_name="Rosita") if i == 1 else None)
+    assert remplacer_mentions("<@1> — percuteurs, <@!9> — x", guild) == "@Rosita — percuteurs, <@!9> — x"
