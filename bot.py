@@ -40,14 +40,17 @@ class LoeilClient(discord.Client):
             log.info("Sondage de présence programmé à %s", config.PRESENCE_HOUR)
         if config.TENSION_CHANNEL_IDS:
             log.info("Apaisement actif sur %d salon(s)", len(config.TENSION_CHANNEL_IDS))
+        # /postuler n'existe que sur le serveur de recrutement (GUILD_ID) ;
+        # /sondage-presence est disponible sur tous les serveurs du bot.
         if config.GUILD_ID is not None:
             guild = discord.Object(id=config.GUILD_ID)
-            self.tree.copy_global_to(guild=guild)
+            self.tree.add_command(postuler, guild=guild)
             await self.tree.sync(guild=guild)
-            log.info("Slash commands synchronisées sur le serveur %s", config.GUILD_ID)
+            log.info("/postuler synchronisée sur le serveur %s", config.GUILD_ID)
         else:
-            await self.tree.sync()
-            log.info("Slash commands synchronisées globalement (peut prendre jusqu'à 1h)")
+            self.tree.add_command(postuler)
+        await self.tree.sync()
+        log.info("Slash commands globales synchronisées")
 
 
 bot = LoeilClient()
@@ -86,7 +89,7 @@ async def sondage_presence(interaction: discord.Interaction) -> None:
         await interaction.followup.send(f"Sondage posté : {message.jump_url}", ephemeral=True)
 
 
-@bot.tree.command(name="postuler", description="Démarrer un entretien avec L'Œil.")
+@app_commands.command(name="postuler", description="Démarrer un entretien avec L'Œil.")
 async def postuler(interaction: discord.Interaction) -> None:
     user = interaction.user
     if interview.is_active(user.id):
@@ -111,6 +114,9 @@ async def on_ready() -> None:
 @bot.event
 async def on_member_join(member: discord.Member) -> None:
     if member.bot:
+        return
+    # Entretien automatique uniquement sur le serveur de recrutement.
+    if config.GUILD_ID is not None and member.guild.id != config.GUILD_ID:
         return
     await interview.start(bot, member, member.guild)
 
