@@ -239,6 +239,32 @@ async def annoncer_missions(client: discord.Client, jour: date, attributions: di
     return True
 
 
+def a_relancer(missions_soiree: dict[str, dict]) -> list[tuple[int, dict]]:
+    """Missions encore en cours (ni accomplies ni marquées pas faites)."""
+    return [(int(membre_id), entree) for membre_id, entree in missions_soiree.items()
+            if entree["statut"] == EN_COURS]
+
+
+async def relancer(client: discord.Client, stockage: StockageMissions, jour: date) -> tuple[list[str], list[str]]:
+    """Renvoie en MP la mission à ceux qui ne l'ont pas validée. Retourne (relancés, MP fermés)."""
+    relances, echecs = [], []
+    for membre_id, entree in a_relancer(stockage.soiree(jour)):
+        embed = embed_mission(jour, entree["mission"], entree["par"])
+        embed.title = "⏰ Rappel — ta mission de ce soir"
+        try:
+            utilisateur = client.get_user(membre_id) or await client.fetch_user(membre_id)
+            await utilisateur.send(
+                f"Tu n'as pas encore dit où en est ta mission. Valide-la avant {config.RAPPORT_HOUR}, "
+                "le rapport part aux chefs.",
+                embed=embed, view=VueMission(stockage),
+            )
+            relances.append(entree["nom"])
+        except discord.HTTPException as exc:
+            log.warning("Relance impossible pour %s : %s", entree["nom"], exc)
+            echecs.append(entree["nom"])
+    return relances, echecs
+
+
 class ModalMissions(discord.ui.Modal, title="Missions du soir"):
     def __init__(self, client: discord.Client, stockage: StockageMissions, jour: date, presents: dict[int, str]):
         super().__init__()

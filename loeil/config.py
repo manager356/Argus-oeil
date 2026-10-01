@@ -80,4 +80,6 @@ AVERTISSEMENT_HEURES: int = _optional_int("AVERTISSEMENT_HEURES") or 24
 # ID Discord des chefs qui reçoivent la liste des présents (séparés par des virgules). Vide = désactivé.
 MISSIONS_CHEF_IDS: list[int] = _optional_int_list("MISSIONS_CHEF_IDS")
 MISSIONS_HOUR: str = os.getenv("MISSIONS_HOUR") or "20:00"
-RAPPORT_HOUR: str = os.getenv("RAPPORT_HOUR") or "02:00"
+RAPPORT_HOUR: str = os.getenv("RAPPORT_HOUR") or "00:00"
+# Relance en MP de ceux qui n'ont pas validé leur mission (avant le rapport)
+RELANCE_HOUR: str = os.getenv("RELANCE_HOUR") or "23:00"

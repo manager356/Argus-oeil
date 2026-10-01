@@ -98,3 +98,30 @@ def test_mentions_remplacees_par_les_pseudos():
     from loeil.annonces import remplacer_mentions
     guild = SimpleNamespace(get_member=lambda i: SimpleNamespace(display_name="Rosita") if i == 1 else None)
     assert remplacer_mentions("<@1> — percuteurs, <@!9> — x", guild) == "@Rosita — percuteurs, <@!9> — x"
+
+
+def test_relance_seulement_les_missions_en_cours(tmp_path):
+    s = StockageMissions(tmp_path / "m.json")
+    jour = date(2026, 10, 1)
+    s.ajouter(jour, 1, "Rosita", "percuteurs", "Armand")
+    s.ajouter(jour, 2, "Diego", "Devils", "Armand")
+    s.ajouter(jour, 3, "Fluxy", "prison", "Armand")
+    s.statuer(jour, 2, ACCOMPLIE)
+    assert [m for m, _ in missions.a_relancer(s.soiree(jour))] == [1, 3]
+
+    ok_user = SimpleNamespace(send=AsyncMock())
+    ferme = SimpleNamespace(send=AsyncMock(side_effect=missions.discord.Forbidden(
+        SimpleNamespace(status=403, reason="Forbidden"), "MP fermés")))
+    client = SimpleNamespace(get_user=lambda i: ok_user if i == 1 else ferme, fetch_user=AsyncMock())
+
+    async def scenario():
+        missions.VueMission(s)  # la vue doit pouvoir se construire dans la boucle
+        return await missions.relancer(client, s, jour)
+
+    relances, echecs = asyncio.run(scenario())
+    assert relances == ["Rosita"] and echecs == ["Fluxy"]
+    assert "Rappel" in ok_user.send.call_args.kwargs["embed"].title
+
+
+def test_date_du_rapport_a_minuit():
+    assert date_soiree(datetime(2026, 10, 2, 0, 0, tzinfo=PARIS)) == date(2026, 10, 1)

@@ -13,7 +13,7 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 
 3. **Discussion** : L'Œil répond quand on le mentionne ou qu'on répond à son message, et aux questions générales posées dans les salons (une réponse spontanée max toutes les 2 min par salon). Il s'appuie sur les annonces, les bilans de réunion et le salon objectifs, et n'invente rien. Quand un joueur dit qu'il n'y a rien à faire, il l'interroge sur ce qu'il a fait puis lui propose des actions concrètes. Personnalité : mystérieuse, phrases courtes. Modèle : `CHAT_MODEL` (Haiku par défaut).
 
-4. **Missions du soir** : à `MISSIONS_HOUR` (20:00), les chefs (`MISSIONS_CHEF_IDS`) reçoivent en MP la liste des présents avec un bouton **Attribuer les missions** (formulaire « Pseudo : mission »). Chaque joueur reçoit sa mission en MP avec les boutons ✅ Accomplie / ❌ Pas pu la faire. À `RAPPORT_HOUR` (02:00), rapport dans le salon staff et en MP aux chefs. Commandes : `/missions` (liste maintenant), `/mission` (une mission à un joueur), `/rapport-missions`.
+4. **Missions du soir** : à `MISSIONS_HOUR` (20:00), les chefs (`MISSIONS_CHEF_IDS`) reçoivent en MP la liste des présents avec un bouton **Attribuer les missions** (formulaire « Pseudo : mission »). Chaque joueur reçoit sa mission en MP avec les boutons ✅ Accomplie / ❌ Pas pu la faire. À `RELANCE_HOUR` (23:00), ceux qui n'ont pas validé leur mission reçoivent un rappel en MP. À `RAPPORT_HOUR` (00:00), rapport dans le salon staff et en MP aux chefs. Commandes : `/missions` (liste maintenant), `/mission` (une mission à un joueur), `/rapport-missions`.
 
 ## Variables d'environnement
 
@@ -36,7 +36,8 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 | `CHAT_ENABLED` | — | `0` pour couper la discussion |
 | `MISSIONS_CHEF_IDS` | — | ID Discord des chefs qui distribuent les missions (virgules) |
 | `MISSIONS_HOUR` | — | Envoi de la liste des présents, `20:00` par défaut |
-| `RAPPORT_HOUR` | — | Rapport des missions, `02:00` par défaut |
+| `RELANCE_HOUR` | — | Rappel aux joueurs qui n'ont pas validé, `23:00` par défaut |
+| `RAPPORT_HOUR` | — | Rapport des missions, `00:00` par défaut |
 | `SANCTIONS_ENABLED` | — | `0` pour couper avertissements et mutes |
 | `MUTE_MINUTES` | — | Durée du mute, `30` par défaut |
 | `AVERTISSEMENT_HEURES` | — | Durée de validité d'un avertissement, `24` par défaut |

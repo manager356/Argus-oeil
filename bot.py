@@ -49,8 +49,10 @@ class LoeilClient(discord.Client):
         self.add_view(missions.VueAttribution(self, _stockage_missions, charger_presents))
         if config.MISSIONS_CHEF_IDS:
             envoi_presents.start()
+            relance_missions.start()
             rapport_missions.start()
-            log.info("Missions : présents envoyés à %s, rapport à %s", config.MISSIONS_HOUR, config.RAPPORT_HOUR)
+            log.info("Missions : présents à %s, relance à %s, rapport à %s",
+                     config.MISSIONS_HOUR, config.RELANCE_HOUR, config.RAPPORT_HOUR)
         if config.PRESENCE_CHANNEL_ID:
             sondage_quotidien.start()
             log.info("Sondage de présence programmé à %s", config.PRESENCE_HOUR)
@@ -186,6 +188,18 @@ async def envoyer_presents_aux_chefs(destinataires: list[int]) -> str:
 @tasks.loop(time=_heure(config.MISSIONS_HOUR))
 async def envoi_presents() -> None:
     log.info(await envoyer_presents_aux_chefs(config.MISSIONS_CHEF_IDS))
+
+
+@tasks.loop(time=_heure(config.RELANCE_HOUR))
+async def relance_missions() -> None:
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    relances, echecs = await missions.relancer(bot, _stockage_missions, jour)
+    log.info("Relance missions : %d relancé(s), %d MP fermé(s)", len(relances), len(echecs))
+
+
+@relance_missions.before_loop
+async def _attendre_avant_relance() -> None:
+    await bot.wait_until_ready()
 
 
 @tasks.loop(time=_heure(config.RAPPORT_HOUR))
