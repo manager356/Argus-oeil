@@ -8,6 +8,8 @@ from discord import app_commands
 from discord.ext import tasks
 
 from loeil import apaisement, config
+from loeil.annonces import MemoireAnnonces
+from loeil.discussion import Discussion
 from loeil.presence import StockageVotes, VuePresence, publier_sondage
 
 
@@ -20,6 +22,8 @@ log = logging.getLogger("loeil.bot")
 FUSEAU = ZoneInfo("Europe/Paris")
 _heure, _minute = (int(x) for x in config.PRESENCE_HOUR.split(":"))
 _stockage_presence = StockageVotes(Path(__file__).parent / "donnees" / "presence.json")
+_annonces = MemoireAnnonces()
+_discussion = Discussion(_annonces)
 
 
 _intents = discord.Intents.default()
@@ -105,13 +109,42 @@ async def sondage_presence(interaction: discord.Interaction) -> None:
 @bot.event
 async def on_ready() -> None:
     log.info("L'Œil est connecté en tant que %s (id=%s)", bot.user, bot.user.id if bot.user else "?")
+    salon_annonces = bot.get_channel(config.ANNONCES_CHANNEL_ID or 0)
+    if salon_annonces is None:
+        log.warning("Salon des annonces introuvable (ANNONCES_CHANNEL_ID) : L'Œil répondra sans les annonces")
+        return
+    try:
+        await _annonces.charger(salon_annonces)
+    except discord.HTTPException as exc:
+        log.error("Lecture des annonces impossible : %s", exc)
 
 
 @bot.event
 async def on_message(message: discord.Message) -> None:
     if message.author.bot or message.guild is None:
         return
+    if message.channel.id == config.ANNONCES_CHANNEL_ID:
+        _annonces.ajouter_message(message)
+        return
     await apaisement.on_guild_message(bot, message)
+    if config.CHAT_ENABLED and bot.user is not None:
+        a_traiter, directe = _discussion.doit_considerer(message, bot.user)
+        if a_traiter:
+            if directe:
+                async with message.channel.typing():
+                    await _discussion.repondre(message, bot.user, directe)
+            else:
+                await _discussion.repondre(message, bot.user, directe)
+
+
+@bot.event
+async def on_message_edit(avant: discord.Message, apres: discord.Message) -> None:
+    # Une annonce corrigée : on recharge la liste pour garder la bonne version.
+    if apres.channel.id == config.ANNONCES_CHANNEL_ID:
+        try:
+            await _annonces.charger(apres.channel)
+        except discord.HTTPException as exc:
+            log.error("Relecture des annonces impossible : %s", exc)
 
 
 if __name__ == "__main__":

@@ -60,3 +60,9 @@ TENSION_MODEL: str = os.getenv("TENSION_MODEL") or "claude-opus-5-5"
 PRESENCE_CHANNEL_ID: int | None = _optional_int("PRESENCE_CHANNEL_ID")
 PRESENCE_ROLE_ID: int | None = _optional_int("PRESENCE_ROLE_ID")
 PRESENCE_HOUR: str = os.getenv("PRESENCE_HOUR") or "16:00"
+
+# --- Discussion : L'Œil répond aux questions à partir des annonces ---
+ANNONCES_CHANNEL_ID: int | None = _optional_int("ANNONCES_CHANNEL_ID")
+CHAT_MODEL: str = os.getenv("CHAT_MODEL") or "claude-haiku-4-5"
+# Mettre CHAT_ENABLED=0 pour couper la discussion
+CHAT_ENABLED: bool = os.getenv("CHAT_ENABLED", "1") != "0"
