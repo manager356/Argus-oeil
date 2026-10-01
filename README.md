@@ -27,6 +27,7 @@ Bot Discord en Python pour le serveur RP. Il a trois fonctions :
 | `PRESENCE_ROLE_ID` | — | Rôle pingé par le sondage |
 | `PRESENCE_HOUR` | — | Heure du sondage, `16:00` par défaut |
 | `ANNONCES_CHANNEL_ID` | — | Salon des annonces que L'Œil lit pour répondre |
+| `BILANS_CHANNEL_ID` | — | Salon des bilans de réunion (10 derniers lus) |
 | `CHAT_MODEL` | — | `claude-haiku-4-5` par défaut |
 | `CHAT_ENABLED` | — | `0` pour couper la discussion |
 

@@ -1,4 +1,4 @@
-"""Mémoire des annonces du serveur : L'Œil s'en sert pour répondre aux questions."""
+"""Mémoire d'un salon d'infos (annonces, bilans de réunion) : L'Œil s'en sert pour répondre."""
 import logging
 from collections import deque
 from dataclasses import dataclass
@@ -29,12 +29,13 @@ def contenu_message(message: discord.Message) -> str:
 
 
 class MemoireAnnonces:
-    def __init__(self, taille: int = NB_ANNONCES):
+    def __init__(self, taille: int = NB_ANNONCES, max_caracteres: int = MAX_CARACTERES_ANNONCE):
         self.annonces: deque[Annonce] = deque(maxlen=taille)
+        self.max_caracteres = max_caracteres
 
     def ajouter(self, date: datetime, auteur: str, contenu: str) -> None:
         if contenu:
-            self.annonces.append(Annonce(date, auteur, contenu[:MAX_CARACTERES_ANNONCE]))
+            self.annonces.append(Annonce(date, auteur, contenu[:self.max_caracteres]))
 
     def ajouter_message(self, message: discord.Message) -> None:
         self.ajouter(message.created_at, message.author.display_name, contenu_message(message))
@@ -48,7 +49,7 @@ class MemoireAnnonces:
 
     def texte(self) -> str:
         if not self.annonces:
-            return "(aucune annonce connue)"
+            return "(rien de connu)"
         return "\n\n".join(
             f"[{a.date:%d/%m/%Y} — {a.auteur}]\n{a.contenu}" for a in self.annonces
         )

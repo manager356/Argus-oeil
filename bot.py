@@ -22,8 +22,13 @@ log = logging.getLogger("loeil.bot")
 FUSEAU = ZoneInfo("Europe/Paris")
 _heure, _minute = (int(x) for x in config.PRESENCE_HOUR.split(":"))
 _stockage_presence = StockageVotes(Path(__file__).parent / "donnees" / "presence.json")
-_annonces = MemoireAnnonces()
-_discussion = Discussion(_annonces)
+# Salons d'infos que L'Œil lit pour répondre : id du salon -> (nom de la partie, mémoire)
+_salons_infos: dict[int, tuple[str, MemoireAnnonces]] = {}
+if config.ANNONCES_CHANNEL_ID:
+    _salons_infos[config.ANNONCES_CHANNEL_ID] = ("annonces", MemoireAnnonces(taille=30, max_caracteres=1500))
+if config.BILANS_CHANNEL_ID:
+    _salons_infos[config.BILANS_CHANNEL_ID] = ("bilans_reunions", MemoireAnnonces(taille=10, max_caracteres=4000))
+_discussion = Discussion({titre: memoire for titre, memoire in _salons_infos.values()})
 
 
 _intents = discord.Intents.default()
@@ -109,22 +114,26 @@ async def sondage_presence(interaction: discord.Interaction) -> None:
 @bot.event
 async def on_ready() -> None:
     log.info("L'Œil est connecté en tant que %s (id=%s)", bot.user, bot.user.id if bot.user else "?")
-    salon_annonces = bot.get_channel(config.ANNONCES_CHANNEL_ID or 0)
-    if salon_annonces is None:
-        log.warning("Salon des annonces introuvable (ANNONCES_CHANNEL_ID) : L'Œil répondra sans les annonces")
-        return
-    try:
-        await _annonces.charger(salon_annonces)
-    except discord.HTTPException as exc:
-        log.error("Lecture des annonces impossible : %s", exc)
+    for salon_id, (titre, memoire) in _salons_infos.items():
+        salon = bot.get_channel(salon_id)
+        if salon is None:
+            log.warning("Salon d'infos %s (%s) introuvable ou invisible pour L'Œil", salon_id, titre)
+            continue
+        try:
+            await memoire.charger(salon)
+        except discord.HTTPException as exc:
+            log.error("Lecture de %s impossible : %s", titre, exc)
 
 
 @bot.event
 async def on_message(message: discord.Message) -> None:
-    if message.author.bot or message.guild is None:
+    if message.guild is None or message.author == bot.user:
         return
-    if message.channel.id == config.ANNONCES_CHANNEL_ID:
-        _annonces.ajouter_message(message)
+    # Les annonces sont parfois postées par des bots : on les lit quand même.
+    if message.channel.id in _salons_infos:
+        _salons_infos[message.channel.id][1].ajouter_message(message)
+        return
+    if message.author.bot:
         return
     await apaisement.on_guild_message(bot, message)
     if config.CHAT_ENABLED and bot.user is not None:
@@ -139,12 +148,13 @@ async def on_message(message: discord.Message) -> None:
 
 @bot.event
 async def on_message_edit(avant: discord.Message, apres: discord.Message) -> None:
-    # Une annonce corrigée : on recharge la liste pour garder la bonne version.
-    if apres.channel.id == config.ANNONCES_CHANNEL_ID:
+    # Une annonce ou un bilan corrigé : on recharge pour garder la bonne version.
+    if apres.channel.id in _salons_infos:
+        titre, memoire = _salons_infos[apres.channel.id]
         try:
-            await _annonces.charger(apres.channel)
+            await memoire.charger(apres.channel)
         except discord.HTTPException as exc:
-            log.error("Relecture des annonces impossible : %s", exc)
+            log.error("Relecture de %s impossible : %s", titre, exc)
 
 
 if __name__ == "__main__":
