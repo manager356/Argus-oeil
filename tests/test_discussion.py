@@ -7,7 +7,7 @@ import discord
 
 from loeil import discussion
 from loeil.annonces import MemoireAnnonces
-from loeil.discussion import Discussion, est_ennui, est_question, lire_decision
+from loeil.discussion import Discussion, est_ennui, est_question, formater_remarques, lire_decision
 
 
 def test_detection_des_questions():
@@ -88,3 +88,14 @@ def test_detection_ennui():
     assert est_ennui("de toute façon y'a rien à faire je me co pour rien")
     assert est_ennui("Je m’ennuie grave")
     assert not est_ennui("on a fait le braquage hier")
+
+
+def test_remarques_triees_et_limitees():
+    msgs = [(datetime(2026, 10, 1, 20), "Fluxy", "je fais les commandes solo tous les soirs"),
+            (datetime(2026, 9, 30, 18), "Sienna", "Fluxy gère presque seul l'orga")]
+    texte = formater_remarques(msgs)
+    assert texte.index("Sienna") < texte.index("Fluxy :")
+    assert "[01/10 20h] Fluxy" in texte
+    many = [(datetime(2026, 9, 1) + discussion.timedelta(minutes=i), "a", str(i)) for i in range(200)]
+    assert formater_remarques(many).count("\n") == discussion.MAX_REMARQUES + 1
+    assert "(aucune)" in formater_remarques([])
