@@ -82,7 +82,20 @@ async def _attendre_connexion() -> None:
 @app_commands.default_permissions(manage_guild=True)
 async def sondage_presence(interaction: discord.Interaction) -> None:
     await interaction.response.defer(ephemeral=True)
-    message = await poster_sondage()
+    try:
+        message = await poster_sondage()
+    except discord.Forbidden:
+        log.exception("Permission refusée pour poster le sondage")
+        await interaction.followup.send(
+            "Je n'ai pas le droit de poster dans le salon du sondage. Donne au rôle de L'Œil : "
+            "Voir le salon, Envoyer des messages, Intégrer des liens, Mentionner tout le monde.",
+            ephemeral=True,
+        )
+        return
+    except discord.HTTPException as exc:
+        log.exception("Échec du sondage de présence")
+        await interaction.followup.send(f"Échec du sondage : {exc}", ephemeral=True)
+        return
     if message is None:
         await interaction.followup.send("Salon du sondage introuvable : vérifie PRESENCE_CHANNEL_ID.", ephemeral=True)
     else:
