@@ -58,6 +58,7 @@ class Message:
     auteur: str
     contenu: str
     lien: str
+    auteur_id: int = 0
 
 
 class EtatSalon:
@@ -67,11 +68,16 @@ class EtatSalon:
         self.historique: deque[Message] = deque(maxlen=taille_historique)
         self.suspect = False
         self.derniere_intervention: float | None = None
+        self.nb_nouveaux = 0  # messages arrivés depuis la dernière analyse
 
     def ajouter(self, message: Message, suspect: bool) -> None:
         self.historique.append(message)
+        self.nb_nouveaux = min(self.nb_nouveaux + 1, len(self.historique))
         if suspect:
             self.suspect = True
+
+    def nouveaux(self) -> list[Message]:
+        return list(self.historique)[len(self.historique) - self.nb_nouveaux:]
 
     def en_pause(self, maintenant: float, pause_secondes: float) -> bool:
         return (
@@ -79,11 +85,14 @@ class EtatSalon:
             and maintenant - self.derniere_intervention < pause_secondes
         )
 
-    def doit_analyser(self, maintenant: float, pause_secondes: float) -> bool:
-        return self.suspect and not self.en_pause(maintenant, pause_secondes)
+    def doit_analyser(self) -> bool:
+        # On analyse même pendant la pause : les avertissements/mutes restent actifs,
+        # seule la pause empêche de reposter un message d'apaisement.
+        return self.suspect
 
     def marquer_analyse(self) -> None:
         self.suspect = False
+        self.nb_nouveaux = 0
 
     def marquer_intervention(self, maintenant: float) -> None:
         self.derniere_intervention = maintenant

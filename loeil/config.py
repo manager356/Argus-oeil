@@ -64,6 +64,14 @@ PRESENCE_HOUR: str = os.getenv("PRESENCE_HOUR") or "16:00"
 # --- Discussion : L'Œil répond aux questions à partir des annonces ---
 ANNONCES_CHANNEL_ID: int | None = _optional_int("ANNONCES_CHANNEL_ID")
 BILANS_CHANNEL_ID: int | None = _optional_int("BILANS_CHANNEL_ID")
+# Salon des objectifs de l'orga (par défaut : celui du serveur RP)
+OBJECTIFS_CHANNEL_ID: int | None = _optional_int("OBJECTIFS_CHANNEL_ID") or 1530622127596769371
 CHAT_MODEL: str = os.getenv("CHAT_MODEL") or "claude-haiku-4-5"
 # Mettre CHAT_ENABLED=0 pour couper la discussion
 CHAT_ENABLED: bool = os.getenv("CHAT_ENABLED", "1") != "0"
+
+# --- Sanctions : avertissement puis mute en cas de manque de respect ---
+SANCTIONS_ENABLED: bool = os.getenv("SANCTIONS_ENABLED", "1") != "0"
+MUTE_MINUTES: int = _optional_int("MUTE_MINUTES") or 30
+# Durée pendant laquelle un avertissement compte (une récidive dans ce délai = mute)
+AVERTISSEMENT_HEURES: int = _optional_int("AVERTISSEMENT_HEURES") or 24

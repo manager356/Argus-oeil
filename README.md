@@ -7,10 +7,11 @@ Bot Discord en Python pour le serveur RP. Il a trois fonctions :
    - niveau 2 : message d'apaisement dans le salon ;
    - niveau 3 : apaisement + alerte dans le salon staff (`TENSION_STAFF_CHANNEL_ID`).
 
-   Au maximum une intervention toutes les 30 min par salon, jamais de sanction automatique. Les mots déclencheurs sont dans `loeil/tension.py`.
+   Au maximum un message d'apaisement toutes les 30 min par salon.
+   **Sanctions** : un joueur qui manque vraiment de respect à quelqu'un reçoit un avertissement public ; s'il recommence dans les `AVERTISSEMENT_HEURES` (24 h), il est mute `MUTE_MINUTES` (30 min) et le staff est prévenu. Le staff (admin / modérer les membres / gérer le serveur) n'est jamais sanctionné. Permission requise : **Exclure temporairement des membres** (Modérer les membres), et le rôle de L'Œil doit être au-dessus des rôles des joueurs. Les mots déclencheurs sont dans `loeil/tension.py`.
 2. **Sondage de présence** : tous les jours à `PRESENCE_HOUR` (heure de Paris, 16:00 par défaut), il poste dans `PRESENCE_CHANNEL_ID` un sondage avec les boutons ✅ Présent / ❌ Absent / ⏳ Peut-être, mis à jour en direct. `/sondage-presence` (admins) le poste immédiatement.
 
-3. **Discussion** : L'Œil répond quand on le mentionne ou qu'on répond à son message, et aux questions générales posées dans les salons (une réponse spontanée max toutes les 2 min par salon). Il s'appuie sur les 30 dernières annonces de `ANNONCES_CHANNEL_ID` et n'invente rien. Personnalité : mystérieuse, phrases courtes. Modèle : `CHAT_MODEL` (Haiku par défaut).
+3. **Discussion** : L'Œil répond quand on le mentionne ou qu'on répond à son message, et aux questions générales posées dans les salons (une réponse spontanée max toutes les 2 min par salon). Il s'appuie sur les annonces, les bilans de réunion et le salon objectifs, et n'invente rien. Quand un joueur dit qu'il n'y a rien à faire, il l'interroge sur ce qu'il a fait puis lui propose des actions concrètes. Personnalité : mystérieuse, phrases courtes. Modèle : `CHAT_MODEL` (Haiku par défaut).
 
 ## Variables d'environnement
 
@@ -28,8 +29,12 @@ Bot Discord en Python pour le serveur RP. Il a trois fonctions :
 | `PRESENCE_HOUR` | — | Heure du sondage, `16:00` par défaut |
 | `ANNONCES_CHANNEL_ID` | — | Salon des annonces que L'Œil lit pour répondre |
 | `BILANS_CHANNEL_ID` | — | Salon des bilans de réunion (10 derniers lus) |
+| `OBJECTIFS_CHANNEL_ID` | — | Salon des objectifs (défaut : celui du serveur) |
 | `CHAT_MODEL` | — | `claude-haiku-4-5` par défaut |
 | `CHAT_ENABLED` | — | `0` pour couper la discussion |
+| `SANCTIONS_ENABLED` | — | `0` pour couper avertissements et mutes |
+| `MUTE_MINUTES` | — | Durée du mute, `30` par défaut |
+| `AVERTISSEMENT_HEURES` | — | Durée de validité d'un avertissement, `24` par défaut |
 
 Intent requis (Developer Portal → Bot) : **Message Content Intent**.
 

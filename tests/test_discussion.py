@@ -7,7 +7,7 @@ import discord
 
 from loeil import discussion
 from loeil.annonces import MemoireAnnonces
-from loeil.discussion import Discussion, est_question, lire_decision
+from loeil.discussion import Discussion, est_ennui, est_question, lire_decision
 
 
 def test_detection_des_questions():
@@ -82,3 +82,9 @@ def test_plusieurs_sources_dans_le_prompt():
     texte = Discussion({"annonces": annonces, "bilans_reunions": bilans}, client=object()).texte_sources()
     assert "<annonces>" in texte and "Réunion samedi" in texte
     assert "<bilans_reunions>" in texte and "Bilan trè" in texte and "coupé" not in texte
+
+
+def test_detection_ennui():
+    assert est_ennui("de toute façon y'a rien à faire je me co pour rien")
+    assert est_ennui("Je m’ennuie grave")
+    assert not est_ennui("on a fait le braquage hier")

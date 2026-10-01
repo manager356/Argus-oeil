@@ -1,7 +1,7 @@
 """Analyse d'une conversation HRP par Claude : niveau de tension + message d'apaisement."""
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import anthropic
 
@@ -36,7 +36,12 @@ Si le niveau est 2 ou 3, écris "message_apaisement" comme le ferait un membre r
 Si le niveau est 0 ou 1, laisse "message_apaisement" vide.
 
 "raison" : une phrase courte pour le staff qui explique ton jugement.
-"personnes" : les pseudos des joueurs directement impliqués dans la tension (vide si aucun)."""
+"personnes" : les pseudos des joueurs directement impliqués dans la tension (vide si aucun).
+
+"irrespectueux" : les pseudos (écrits exactement comme dans la conversation) des joueurs qui ont VRAIMENT manqué de respect à une autre personne, uniquement dans les messages APRÈS la ligne "--- nouveaux messages ---". Ces joueurs recevront un avertissement, puis un mute s'ils recommencent : sois juste et prudent.
+Compte comme manque de respect : insulte ou rabaissement visant réellement quelqu'un, mépris envers un joueur ou le staff, menace, harcèlement, propos discriminatoire.
+Ne compte PAS : le chambrage évident entre potes (ton rieur, "mdr", emojis, l'autre répond sur le même ton), la vulgarité qui ne vise personne, un coup de gueule général, les piques adressées au bot L'Œil.
+Dans le doute, n'ajoute personne."""
 
 SCHEMA = {
     "type": "object",
@@ -45,8 +50,9 @@ SCHEMA = {
         "raison": {"type": "string"},
         "message_apaisement": {"type": "string"},
         "personnes": {"type": "array", "items": {"type": "string"}},
+        "irrespectueux": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["niveau", "raison", "message_apaisement", "personnes"],
+    "required": ["niveau", "raison", "message_apaisement", "personnes", "irrespectueux"],
     "additionalProperties": False,
 }
 
@@ -57,10 +63,13 @@ class Verdict:
     raison: str
     message_apaisement: str
     personnes: list[str]
+    irrespectueux: list[str] = field(default_factory=list)
 
 
-def formater_conversation(messages: list[Message]) -> str:
+def formater_conversation(messages: list[Message], nb_nouveaux: int | None = None) -> str:
     lignes = [f"{m.auteur} : {m.contenu}" for m in messages]
+    if nb_nouveaux is not None:
+        lignes.insert(len(lignes) - min(nb_nouveaux, len(lignes)), "--- nouveaux messages ---")
     return "<conversation>\n" + "\n".join(lignes) + "\n</conversation>"
 
 
@@ -71,6 +80,7 @@ def lire_verdict(texte_json: str) -> Verdict:
         raison=data["raison"],
         message_apaisement=data["message_apaisement"].strip(),
         personnes=list(data["personnes"]),
+        irrespectueux=list(data.get("irrespectueux", [])),
     )
 
 
@@ -79,14 +89,14 @@ class Analyseur:
         self.modele = modele
         self.client = client or anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
 
-    async def analyser(self, messages: list[Message]) -> Verdict | None:
+    async def analyser(self, messages: list[Message], nb_nouveaux: int | None = None) -> Verdict | None:
         """Retourne le verdict, ou None si l'analyse a échoué (on ne fait alors rien)."""
         params = dict(
             model=self.modele,
             max_tokens=4000,
             system=SYSTEME,
             output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
-            messages=[{"role": "user", "content": formater_conversation(messages)}],
+            messages=[{"role": "user", "content": formater_conversation(messages, nb_nouveaux)}],
         )
         if not self.modele.startswith("claude-haiku"):  # Haiku n'accepte pas "effort"
             params["output_config"]["effort"] = "low"

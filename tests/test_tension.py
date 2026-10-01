@@ -28,14 +28,26 @@ def test_mots_courts_doivent_etre_entiers():
 def test_etat_salon_pause_apres_intervention():
     etat = EtatSalon(3)
     etat.ajouter(Message("a", "salut", ""), suspect=False)
-    assert not etat.doit_analyser(100, 1800)
+    assert not etat.doit_analyser()
     etat.ajouter(Message("b", "ntm", ""), suspect=True)
-    assert etat.doit_analyser(100, 1800)
+    assert etat.doit_analyser()
     etat.marquer_analyse()
     etat.marquer_intervention(100)
-    etat.ajouter(Message("b", "ntm encore", ""), suspect=True)
-    assert not etat.doit_analyser(200, 1800)
-    assert etat.doit_analyser(100 + 1801, 1800)
+    assert etat.en_pause(200, 1800)
+    assert not etat.en_pause(100 + 1801, 1800)
+
+
+def test_nouveaux_messages_depuis_derniere_analyse():
+    etat = EtatSalon(5)
+    for i in range(3):
+        etat.ajouter(Message("a", str(i), ""), suspect=False)
+    etat.marquer_analyse()
+    etat.ajouter(Message("b", "3", ""), suspect=True)
+    etat.ajouter(Message("b", "4", ""), suspect=False)
+    assert [m.contenu for m in etat.nouveaux()] == ["3", "4"]
+    for i in range(5, 12):
+        etat.ajouter(Message("c", str(i), ""), suspect=False)
+    assert len(etat.nouveaux()) == 5  # jamais plus que l'historique
 
 
 def test_historique_limite():
