@@ -28,7 +28,7 @@ _salons_infos: dict[int, tuple[str, MemoireAnnonces]] = {}
 if config.ANNONCES_CHANNEL_ID:
     _salons_infos[config.ANNONCES_CHANNEL_ID] = ("annonces", MemoireAnnonces(taille=30, max_caracteres=1500))
 if config.BILANS_CHANNEL_ID:
-    _salons_infos[config.BILANS_CHANNEL_ID] = ("bilans_reunions", MemoireAnnonces(taille=10, max_caracteres=4000))
+    _salons_infos[config.BILANS_CHANNEL_ID] = ("bilans_reunions", MemoireAnnonces(taille=12, max_caracteres=8000))
 if config.OBJECTIFS_CHANNEL_ID:
     _salons_infos[config.OBJECTIFS_CHANNEL_ID] = ("objectifs", MemoireAnnonces(taille=20, max_caracteres=3000))
 _discussion = Discussion({titre: memoire for titre, memoire in _salons_infos.values()})

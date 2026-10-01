@@ -31,7 +31,8 @@ def test_memoire_annonces_limitee_et_formatee():
         m.ajouter(datetime(2026, 10, i + 1), "Armand", f"annonce {i}")
     texte = m.texte()
     assert "annonce 0" not in texte and "annonce 2" in texte
-    assert "[03/10/2026 — Armand]" in texte
+    assert texte.index("annonce 2") < texte.index("annonce 1")  # plus récent d'abord
+    assert "[n°1 — LE PLUS RÉCENT — publié le 03/10/2026 à 00h00 par Armand]" in texte
 
 
 BOT = SimpleNamespace(id=999)
@@ -159,3 +160,15 @@ def test_lire_refus():
     assert lire_refus('{"refus_confirme": true}') is True
     assert lire_refus('{"refus_confirme": false}') is False
     assert lire_refus('{}') is False
+
+
+def test_bilan_en_plusieurs_messages_fusionne():
+    from datetime import timedelta
+    m = MemoireAnnonces(taille=5, max_caracteres=100)
+    debut = datetime(2026, 9, 28, 15, 46)
+    m.ajouter(debut, "Fluxy", "Résumé réunion Maldi")
+    m.ajouter(debut + timedelta(minutes=1), "Fluxy", "Concernant la drogue")
+    m.ajouter(debut + timedelta(hours=2), "Fluxy", "Autre bilan")
+    m.ajouter(debut + timedelta(hours=2, minutes=1), "Diego", "Bilan de Diego")
+    assert [a.contenu for a in m.annonces] == ["Résumé réunion Maldi\nConcernant la drogue", "Autre bilan",
+                                               "Bilan de Diego"]
