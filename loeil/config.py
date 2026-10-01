@@ -38,7 +38,6 @@ def _optional_int(name: str) -> int | None:
 
 DISCORD_TOKEN: str = _required("DISCORD_TOKEN")
 ANTHROPIC_API_KEY: str = _required("ANTHROPIC_API_KEY")
-STAFF_CHANNEL_ID: int = _required_int("STAFF_CHANNEL_ID")
 GUILD_ID: int | None = _optional_int("GUILD_ID")
 
 
@@ -52,8 +51,8 @@ def _optional_int_list(name: str) -> list[int]:
 
 # --- Apaisement des tensions HRP (désactivé si TENSION_CHANNEL_IDS est vide) ---
 TENSION_CHANNEL_IDS: list[int] = _optional_int_list("TENSION_CHANNEL_IDS")
-# Salon des alertes niveau 3 (par défaut : le salon staff des candidatures)
-TENSION_STAFF_CHANNEL_ID: int = _optional_int("TENSION_STAFF_CHANNEL_ID") or STAFF_CHANNEL_ID
+# Salon staff des alertes graves (STAFF_CHANNEL_ID accepté pour compatibilité)
+TENSION_STAFF_CHANNEL_ID: int | None = _optional_int("TENSION_STAFF_CHANNEL_ID") or _optional_int("STAFF_CHANNEL_ID")
 TENSION_STAFF_ROLE_ID: int | None = _optional_int("TENSION_STAFF_ROLE_ID")
 TENSION_MODEL: str = os.getenv("TENSION_MODEL") or "claude-opus-5-5"
 

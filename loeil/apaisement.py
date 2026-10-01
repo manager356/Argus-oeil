@@ -72,7 +72,7 @@ async def _analyser_plus_tard(bot: discord.Client, salon: discord.abc.GuildChann
 
 
 async def _alerter_staff(bot: discord.Client, salon: discord.abc.GuildChannel, verdict: Verdict, lien: str) -> None:
-    salon_staff = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID)
+    salon_staff = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0)
     if salon_staff is None:
         log.warning("Alerte niveau 3 non envoyée : salon staff %s introuvable", config.TENSION_STAFF_CHANNEL_ID)
         return

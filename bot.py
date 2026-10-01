@@ -1,13 +1,13 @@
 import logging
-from pathlib import Path
 from datetime import datetime, time
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
 from discord.ext import tasks
 
-from loeil import apaisement, config, interview
+from loeil import apaisement, config
 from loeil.presence import StockageVotes, VuePresence, publier_sondage
 
 
@@ -23,9 +23,7 @@ _stockage_presence = StockageVotes(Path(__file__).parent / "donnees" / "presence
 
 
 _intents = discord.Intents.default()
-_intents.members = True
 _intents.message_content = True
-_intents.dm_messages = True
 
 
 class LoeilClient(discord.Client):
@@ -38,19 +36,21 @@ class LoeilClient(discord.Client):
         if config.PRESENCE_CHANNEL_ID:
             sondage_quotidien.start()
             log.info("Sondage de présence programmé à %s", config.PRESENCE_HOUR)
+        else:
+            log.warning("PRESENCE_CHANNEL_ID vide : sondage de présence désactivé")
         if config.TENSION_CHANNEL_IDS:
             log.info("Apaisement actif sur %d salon(s)", len(config.TENSION_CHANNEL_IDS))
-        # /postuler n'existe que sur le serveur de recrutement (GUILD_ID) ;
-        # /sondage-presence est disponible sur tous les serveurs du bot.
+        else:
+            log.warning("TENSION_CHANNEL_IDS vide : apaisement des tensions désactivé")
+
         if config.GUILD_ID is not None:
             guild = discord.Object(id=config.GUILD_ID)
-            self.tree.add_command(postuler, guild=guild)
+            self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
-            log.info("/postuler synchronisée sur le serveur %s", config.GUILD_ID)
+            log.info("Slash commands synchronisées sur le serveur %s", config.GUILD_ID)
         else:
-            self.tree.add_command(postuler)
-        await self.tree.sync()
-        log.info("Slash commands globales synchronisées")
+            await self.tree.sync()
+            log.info("Slash commands synchronisées globalement (peut prendre jusqu'à 1h)")
 
 
 bot = LoeilClient()
@@ -89,46 +89,16 @@ async def sondage_presence(interaction: discord.Interaction) -> None:
         await interaction.followup.send(f"Sondage posté : {message.jump_url}", ephemeral=True)
 
 
-@app_commands.command(name="postuler", description="Démarrer un entretien avec L'Œil.")
-async def postuler(interaction: discord.Interaction) -> None:
-    user = interaction.user
-    if interview.is_active(user.id):
-        await interaction.response.send_message(
-            "Un entretien est déjà en cours. Vérifie tes messages privés.",
-            ephemeral=True,
-        )
-        return
-    await interaction.response.send_message(
-        "Vérifie tes messages privés.",
-        ephemeral=True,
-    )
-    guild = interaction.guild
-    await interview.start(bot, user, guild)
-
-
 @bot.event
 async def on_ready() -> None:
     log.info("L'Œil est connecté en tant que %s (id=%s)", bot.user, bot.user.id if bot.user else "?")
 
 
 @bot.event
-async def on_member_join(member: discord.Member) -> None:
-    if member.bot:
-        return
-    # Entretien automatique uniquement sur le serveur de recrutement.
-    if config.GUILD_ID is not None and member.guild.id != config.GUILD_ID:
-        return
-    await interview.start(bot, member, member.guild)
-
-
-@bot.event
 async def on_message(message: discord.Message) -> None:
-    if message.author.bot:
+    if message.author.bot or message.guild is None:
         return
-    if message.guild is None:
-        await interview.handle_response(bot, message.author, message.content)
-    else:
-        await apaisement.on_guild_message(bot, message)
+    await apaisement.on_guild_message(bot, message)
 
 
 if __name__ == "__main__":
