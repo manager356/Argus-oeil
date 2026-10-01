@@ -1,9 +1,14 @@
 import logging
+from pathlib import Path
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 import discord
 from discord import app_commands
+from discord.ext import tasks
 
-from loeil import config, interview
+from loeil import apaisement, config, interview
+from loeil.presence import StockageVotes, VuePresence, publier_sondage
 
 
 logging.basicConfig(
@@ -11,6 +16,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 log = logging.getLogger("loeil.bot")
+
+FUSEAU = ZoneInfo("Europe/Paris")
+_heure, _minute = (int(x) for x in config.PRESENCE_HOUR.split(":"))
+_stockage_presence = StockageVotes(Path(__file__).parent / "donnees" / "presence.json")
 
 
 _intents = discord.Intents.default()
@@ -25,6 +34,12 @@ class LoeilClient(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self) -> None:
+        self.add_view(VuePresence(_stockage_presence))
+        if config.PRESENCE_CHANNEL_ID:
+            sondage_quotidien.start()
+            log.info("Sondage de présence programmé à %s", config.PRESENCE_HOUR)
+        if config.TENSION_CHANNEL_IDS:
+            log.info("Apaisement actif sur %d salon(s)", len(config.TENSION_CHANNEL_IDS))
         if config.GUILD_ID is not None:
             guild = discord.Object(id=config.GUILD_ID)
             self.tree.copy_global_to(guild=guild)
@@ -36,6 +51,39 @@ class LoeilClient(discord.Client):
 
 
 bot = LoeilClient()
+
+
+async def poster_sondage() -> discord.Message | None:
+    salon = bot.get_channel(config.PRESENCE_CHANNEL_ID or 0)
+    if salon is None:
+        log.warning("Sondage non posté : salon %s introuvable", config.PRESENCE_CHANNEL_ID)
+        return None
+    return await publier_sondage(salon, _stockage_presence, datetime.now(FUSEAU).date(),
+                                 config.PRESENCE_ROLE_ID or 0)
+
+
+@tasks.loop(time=time(hour=_heure, minute=_minute, tzinfo=FUSEAU))
+async def sondage_quotidien() -> None:
+    try:
+        await poster_sondage()
+    except discord.HTTPException as exc:
+        log.error("Échec du sondage de présence : %s", exc)
+
+
+@sondage_quotidien.before_loop
+async def _attendre_connexion() -> None:
+    await bot.wait_until_ready()
+
+
+@bot.tree.command(name="sondage-presence", description="Poster le sondage de présence maintenant.")
+@app_commands.default_permissions(manage_guild=True)
+async def sondage_presence(interaction: discord.Interaction) -> None:
+    await interaction.response.defer(ephemeral=True)
+    message = await poster_sondage()
+    if message is None:
+        await interaction.followup.send("Salon du sondage introuvable : vérifie PRESENCE_CHANNEL_ID.", ephemeral=True)
+    else:
+        await interaction.followup.send(f"Sondage posté : {message.jump_url}", ephemeral=True)
 
 
 @bot.tree.command(name="postuler", description="Démarrer un entretien avec L'Œil.")
@@ -73,6 +121,8 @@ async def on_message(message: discord.Message) -> None:
         return
     if message.guild is None:
         await interview.handle_response(bot, message.author, message.content)
+    else:
+        await apaisement.on_guild_message(bot, message)
 
 
 if __name__ == "__main__":

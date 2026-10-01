@@ -80,3 +80,16 @@ Bot permissions : View Channels, Send Messages, Read Message History, Embed Link
 Intents (à activer dans Discord Developer Portal → Bot) :
 - **Message Content Intent** (lecture des DMs)
 - **Server Members Intent** (détection des nouveaux arrivants)
+
+## Apaisement des tensions HRP
+
+Dans les salons listés dans `TENSION_CHANNEL_IDS`, quand un message chaud apparaît (insultes, menaces, majuscules), L'Œil attend 45 s que la conversation se pose, puis fait juger les 20 derniers messages par Claude :
+- niveau 0-1 : rien ;
+- niveau 2 : message d'apaisement dans le salon ;
+- niveau 3 : apaisement + alerte dans le salon staff.
+
+Au maximum une intervention toutes les 30 min par salon, jamais de sanction automatique. Les mots déclencheurs sont dans `loeil/tension.py`.
+
+## Sondage de présence
+
+Tous les jours à `PRESENCE_HOUR` (heure de Paris), L'Œil poste dans `PRESENCE_CHANNEL_ID` un sondage avec les boutons ✅ Présent / ❌ Absent / ⏳ Peut-être, mis à jour en direct. `/sondage-presence` (admins) le poste immédiatement.
