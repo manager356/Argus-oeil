@@ -1,82 +1,47 @@
-# L'Œil — Bot de recrutement Argus
+# L'Œil
 
-Bot Discord en Python pour les entretiens de recrutement de l'organisation Argus (roleplay GTA FiveM).
+Bot Discord en Python pour le serveur RP. Il a deux fonctions :
 
-L'Œil est l'entité de surveillance d'Argus. Il ouvre un entretien en DM dès qu'un nouveau membre rejoint le serveur, ou quand quelqu'un tape `/postuler`. Il pose 4 questions, gérées par Claude Haiku 4.5 avec une personnalité froide et minimale. À la fin, il transmet le résumé au staff.
+1. **Apaisement des tensions HRP** : dans les salons listés dans `TENSION_CHANNEL_IDS`, quand un message chaud apparaît (insultes, menaces, majuscules), L'Œil attend 45 s que la conversation se pose, puis fait juger les 20 derniers messages par Claude :
+   - niveau 0-1 : rien ;
+   - niveau 2 : message d'apaisement dans le salon ;
+   - niveau 3 : apaisement + alerte dans le salon staff (`TENSION_STAFF_CHANNEL_ID`).
 
-## Setup local
-
-```powershell
-# 1. Cloner le repo
-git clone <url-repo> Argus-Loeil
-cd Argus-Loeil
-
-# 2. Créer un venv
-python -m venv .venv
-.venv\Scripts\activate   # Windows
-# source .venv/bin/activate   # Mac/Linux
-
-# 3. Installer les dépendances
-pip install -r requirements.txt
-
-# 4. Configurer
-copy .env.example .env
-# Édite .env et remplis les valeurs
-
-# 5. Lancer
-python bot.py
-```
+   Au maximum une intervention toutes les 30 min par salon, jamais de sanction automatique. Les mots déclencheurs sont dans `loeil/tension.py`.
+2. **Sondage de présence** : tous les jours à `PRESENCE_HOUR` (heure de Paris, 16:00 par défaut), il poste dans `PRESENCE_CHANNEL_ID` un sondage avec les boutons ✅ Présent / ❌ Absent / ⏳ Peut-être, mis à jour en direct. `/sondage-presence` (admins) le poste immédiatement.
 
 ## Variables d'environnement
 
 | Variable | Obligatoire | Description |
 |---|---|---|
-| `DISCORD_TOKEN` | ✅ | Token du bot Discord (Discord Developer Portal → Bot → Reset Token) |
-| `ANTHROPIC_API_KEY` | ✅ | Clé API Anthropic Claude (https://console.anthropic.com/settings/keys) |
-| `STAFF_CHANNEL_ID` | ✅ | ID du channel où les candidatures sont postées (mode dev Discord → clic droit → Copier l'ID) |
-| `GUILD_ID` | ⚠️ Recommandé | ID du serveur Argus (sync rapide des slash commands) |
+| `DISCORD_TOKEN` | ✅ | Token du bot |
+| `ANTHROPIC_API_KEY` | ✅ | Clé API Claude |
+| `GUILD_ID` | Recommandé | ID du serveur (commandes slash disponibles tout de suite) |
+| `TENSION_CHANNEL_IDS` | — | ID des salons HRP surveillés, séparés par des virgules |
+| `TENSION_STAFF_CHANNEL_ID` | — | Salon des alertes graves |
+| `TENSION_STAFF_ROLE_ID` | — | Rôle pingé lors d'une alerte grave |
+| `TENSION_MODEL` | — | `claude-opus-5-5` par défaut ; `claude-haiku-4-5` est environ 4 fois moins cher |
+| `PRESENCE_CHANNEL_ID` | — | Salon du sondage |
+| `PRESENCE_ROLE_ID` | — | Rôle pingé par le sondage |
+| `PRESENCE_HOUR` | — | Heure du sondage, `16:00` par défaut |
 
-## Tests
+Intent requis (Developer Portal → Bot) : **Message Content Intent**.
+
+## Lancer en local
 
 ```powershell
-pytest
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+copy .env.example .env   # puis remplir
+.venv\Scripts\python bot.py
 ```
+
+Tests : `.venv\Scripts\python -m pytest`
 
 ## Déploiement Railway
 
-1. Push le code sur GitHub
-2. Sur https://railway.app : **New Project** → **Deploy from GitHub repo** → sélectionne `argus-loeil`
-3. Onglet **Variables** : ajoute `DISCORD_TOKEN`, `ANTHROPIC_API_KEY`, `STAFF_CHANNEL_ID`, `GUILD_ID`
-4. Railway détecte `railway.toml` et lance `python bot.py` automatiquement
+Railway lit `railway.toml` et le `Dockerfile`, puis lance `python bot.py`. Les variables se règlent dans l'onglet **Variables**.
 
-## Architecture
+## Vie privée
 
-```
-bot.py                   # Point d'entrée Discord, commande /postuler, on_member_join
-loeil/
-├── config.py            # Chargement des variables d'environnement
-├── interview.py         # Orchestration des entretiens (état, flux, finalisation)
-├── llm_client.py        # Wrapper Claude (Anthropic SDK) + tool use + prompt caching
-├── prompts.py           # System prompt de L'Œil + 4 questions + messages fixes
-└── staff_channel.py     # Formatage et envoi du résumé staff
-tests/                   # Tests unitaires (Claude et Discord mockés)
-```
-
-## Comportement
-
-- **Nouveau membre rejoint Argus** → L'Œil ouvre un DM et démarre l'entretien automatiquement (bots ignorés).
-- **`/postuler` dans n'importe quel channel** → démarre un entretien en DM. Sert de backup si les DMs étaient fermés au moment du join.
-- **DMs fermés** → L'Œil poste `@candidat Ouvre tes messages privés.` dans le channel système du serveur.
-- **Entretien déjà en cours** → réponse "Un entretien est déjà en cours.", aucun nouvel entretien.
-- **Hors-sujet** → géré par Claude via son system prompt : "Ce n'est pas l'objet de cet entretien." puis répétition de la question en cours.
-- **Fin d'entretien** → Claude appelle le tool `finalize_interview(answer_1..answer_4)` → résumé posté dans le channel staff + message de clôture au candidat.
-
-## Permissions Discord requises
-
-Scopes OAuth2 : `bot`, `applications.commands`
-
-Bot permissions : View Channels, Send Messages, Read Message History, Embed Links, Use Slash Commands
-
-Intents (à activer dans Discord Developer Portal → Bot) :
-- **Message Content Intent** (lecture des DMs)
-- **Server Members Intent** (détection des nouveaux arrivants)
+Quand un mot déclencheur apparaît dans un salon surveillé, les 20 derniers messages de ce salon (pseudos + texte) sont envoyés à l'API Claude (Anthropic) pour être analysés.
