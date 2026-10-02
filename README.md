@@ -11,7 +11,7 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
    **Sanctions** : un joueur qui manque vraiment de respect à quelqu'un reçoit un avertissement public ; s'il recommence dans les `AVERTISSEMENT_HEURES` (24 h), il est mute `MUTE_MINUTES` (30 min) et le staff est prévenu. Le staff (admin / modérer les membres / gérer le serveur) n'est jamais sanctionné. Permission requise : **Exclure temporairement des membres** (Modérer les membres), et le rôle de L'Œil doit être au-dessus des rôles des joueurs. Les mots déclencheurs sont dans `loeil/tension.py`.
 2. **Sondage de présence** : tous les jours à `PRESENCE_HOUR` (heure de Paris, 16:00 par défaut), il poste dans `PRESENCE_CHANNEL_ID` un sondage avec les boutons ✅ Présent / ❌ Absent / ⏳ Peut-être, mis à jour en direct. `/sondage-presence` (admins) le poste immédiatement.
 
-3. **Discussion** : L'Œil répond quand on le mentionne ou qu'on répond à son message, et aux questions générales posées dans les salons (une réponse spontanée max toutes les 2 min par salon). Il s'appuie sur les annonces, les bilans de réunion et le salon objectifs, et n'invente rien. Quand un joueur dit qu'il n'y a rien à faire, il l'interroge sur ce qu'il a fait puis lui propose des actions concrètes. Personnalité : mystérieuse, phrases courtes. Modèle : `CHAT_MODEL` (Haiku par défaut).
+3. **Discussion** : L'Œil répond quand on le mentionne ou qu'on répond à son message, et aux questions générales posées dans les salons (une réponse spontanée max toutes les 2 min par salon). Il s'appuie sur les annonces, les bilans de réunion et le salon objectifs, et n'invente rien. Quand un joueur dit qu'il n'y a rien à faire, il l'interroge sur ce qu'il a fait puis lui propose des actions concrètes. Personnalité : mystérieuse, phrases courtes. Modèle : `CHAT_MODEL` (Opus 5.5 par défaut).
 
 4. **Missions du soir** : à `MISSIONS_HOUR` (20:00), les chefs (`MISSIONS_CHEF_IDS`) reçoivent en MP la liste des présents avec un bouton **Attribuer les missions** (formulaire « Pseudo : mission »). Chaque joueur reçoit sa mission en MP avec les boutons ✅ Accomplie / ❌ Pas pu la faire. À `RELANCE_HOUR` (23:00), ceux qui n'ont pas validé leur mission reçoivent un rappel en MP. À `RAPPORT_HOUR` (00:00), rapport dans le salon staff et en MP aux chefs. Commandes : `/missions` (liste maintenant), `/mission` (une mission à un joueur), `/rapport-missions`.
 
@@ -32,7 +32,7 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 | `ANNONCES_CHANNEL_ID` | — | Salon des annonces que L'Œil lit pour répondre |
 | `BILANS_CHANNEL_ID` | — | Salon des bilans de réunion (10 derniers lus) |
 | `OBJECTIFS_CHANNEL_ID` | — | Salon des objectifs (défaut : celui du serveur) |
-| `CHAT_MODEL` | — | `claude-haiku-4-5` par défaut |
+| `CHAT_MODEL` | — | `claude-opus-5-5` par défaut ; `claude-sonnet-5-5` (~2x moins cher) ou `claude-haiku-4-5` (~4x moins cher, moins fin) |
 | `CHAT_ENABLED` | — | `0` pour couper la discussion |
 | `MISSIONS_CHEF_IDS` | — | ID Discord des chefs qui distribuent les missions (virgules) |
 | `MISSIONS_HOUR` | — | Envoi de la liste des présents, `20:00` par défaut |

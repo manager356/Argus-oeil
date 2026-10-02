@@ -62,19 +62,33 @@ def test_question_spontanee_limitee_par_salon(monkeypatch):
     assert d.doit_considerer(_message("ok"), BOT) == (False, False)
 
 
-def test_appel_ia_utilise_haiku_sans_effort():
-    appels = []
-
+def _client_espion(appels):
     async def create(**params):
         appels.append(params)
         return SimpleNamespace(stop_reason="end_turn",
                                content=[SimpleNamespace(type="text", text='{"repondre": false, "reponse": ""}')])
 
-    client = SimpleNamespace(messages=SimpleNamespace(create=create))
-    d = Discussion({"annonces": MemoireAnnonces()}, client=client)
+    return SimpleNamespace(messages=SimpleNamespace(create=create), beta=SimpleNamespace(
+        messages=SimpleNamespace(create=create)))
+
+
+def test_appel_ia_opus_par_defaut_avec_repli_et_effort_bas():
+    appels = []
+    d = Discussion({"annonces": MemoireAnnonces()}, client=_client_espion(appels))
     assert asyncio.run(d._appeler_ia("<conversation></conversation>", "consigne")) is not None
+    assert appels[0]["model"] == "claude-opus-5-5"
+    assert appels[0]["output_config"]["effort"] == "low"
+    assert appels[0]["fallbacks"] == "default"
+    assert appels[0]["system"][0]["cache_control"]["ttl"] == "1h"
+
+
+def test_appel_ia_haiku_sans_effort(monkeypatch):
+    monkeypatch.setattr(discussion.config, "CHAT_MODEL", "claude-haiku-4-5")
+    appels = []
+    d = Discussion({"annonces": MemoireAnnonces()}, client=_client_espion(appels))
+    asyncio.run(d._appeler_ia("<conversation></conversation>", "consigne"))
     assert appels[0]["model"] == "claude-haiku-4-5"
-    assert "effort" not in appels[0]["output_config"]
+    assert "effort" not in appels[0]["output_config"] and "fallbacks" not in appels[0]
 
 
 def test_plusieurs_sources_dans_le_prompt():

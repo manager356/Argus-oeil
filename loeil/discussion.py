@@ -8,6 +8,7 @@ import anthropic
 import discord
 
 from loeil import config, sanctions
+from loeil.analyseur import MODELES_AVEC_REPLI
 from loeil.annonces import MemoireAnnonces
 from loeil.tension import normaliser
 
@@ -372,18 +373,27 @@ class Discussion:
         return f"<statut_sondage>Ce joueur {libelles.get(statut, 'n’a PAS voté au sondage de présence de ce soir')}.</statut_sondage>"
 
     async def _appeler_ia(self, conversation: str, consigne: str) -> str | None:
+        modele = config.CHAT_MODEL
+        params = dict(
+            model=modele,
+            max_tokens=4000,
+            system=[{
+                "type": "text",
+                "text": SYSTEME.format(sources=self.texte_sources()),
+                # Cache d'1 h : les annonces/bilans changent peu, les questions s'enchaînent dans la soirée.
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }],
+            output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
+            messages=[{"role": "user", "content": f"{conversation}\n\n{consigne}"}],
+        )
+        if not modele.startswith("claude-haiku"):  # Haiku n'accepte pas "effort"
+            params["output_config"]["effort"] = "low"  # réponses de chat : rapide suffit
         try:
-            reponse = await self.client.messages.create(
-                model=config.CHAT_MODEL,
-                max_tokens=600,
-                system=[{
-                    "type": "text",
-                    "text": SYSTEME.format(sources=self.texte_sources()),
-                    "cache_control": {"type": "ephemeral"},
-                }],
-                output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
-                messages=[{"role": "user", "content": f"{conversation}\n\n{consigne}"}],
-            )
+            if modele in MODELES_AVEC_REPLI:
+                reponse = await self.client.beta.messages.create(
+                    betas=["server-side-fallback-2026-07-01"], fallbacks="default", **params)
+            else:
+                reponse = await self.client.messages.create(**params)
         except anthropic.AuthenticationError:
             log.error("Clé API Claude invalide : vérifie ANTHROPIC_API_KEY")
             return None

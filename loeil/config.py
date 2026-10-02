@@ -66,7 +66,7 @@ ANNONCES_CHANNEL_ID: int | None = _optional_int("ANNONCES_CHANNEL_ID")
 BILANS_CHANNEL_ID: int | None = _optional_int("BILANS_CHANNEL_ID")
 # Salon des objectifs de l'orga (par défaut : celui du serveur RP)
 OBJECTIFS_CHANNEL_ID: int | None = _optional_int("OBJECTIFS_CHANNEL_ID") or 1530622127596769371
-CHAT_MODEL: str = os.getenv("CHAT_MODEL") or "claude-haiku-4-5"
+CHAT_MODEL: str = os.getenv("CHAT_MODEL") or "claude-opus-5-5"
 # Mettre CHAT_ENABLED=0 pour couper la discussion
 CHAT_ENABLED: bool = os.getenv("CHAT_ENABLED", "1") != "0"
 
