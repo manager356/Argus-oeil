@@ -39,7 +39,7 @@ def test_generer_bilan_appelle_le_modele_avec_les_notes_et_missions():
                                             "DK a donné 60k pour les tops", "- Rosita : percuteurs → accomplie"))
     assert texte.startswith("**📜 Bilan**")
     contenu = appels[0]["messages"][0]["content"]
-    assert "DK a donné 60k" in contenu and "Rosita : percuteurs" in contenu and "05/10/2026" in contenu
+    assert "DK a donné 60k" in contenu and "Rosita : percuteurs" in contenu and "<ecrit_le>" in contenu
 
 
 def test_bilan_reserve_au_staff_et_leads(monkeypatch):
