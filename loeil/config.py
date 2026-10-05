@@ -85,6 +85,8 @@ MISSIONS_HOUR: str = os.getenv("MISSIONS_HOUR") or "20:00"
 RAPPORT_HOUR: str = os.getenv("RAPPORT_HOUR") or "00:00"
 # Relance en MP de ceux qui n'ont pas validé leur mission (avant le rapport)
 RELANCE_HOUR: str = os.getenv("RELANCE_HOUR") or "23:00"
+# Analyse stratégique des points à suivre envoyée aux chefs avec la liste de 20h (0 = désactivée)
+STRATEGIE_20H: bool = os.getenv("STRATEGIE_20H", "1") != "0"
 
 # --- Leads : L'Œil leur répond toujours, avec déférence, et ne les sanctionne jamais ---
 # (les chefs des missions en font automatiquement partie)

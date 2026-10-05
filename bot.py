@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import tasks
 
-from loeil import apaisement, bilan, config, missions
+from loeil import apaisement, bilan, config, missions, strategie
 from loeil.annonces import MemoireAnnonces
 from loeil.discussion import Discussion
 from loeil.presence import StockageVotes, VuePresence, publier_sondage, votes_du_jour
@@ -248,9 +248,31 @@ async def envoyer_presents_aux_chefs(destinataires: list[int]) -> str:
     return f"Liste envoyée en MP ({len(presents)} présent(s), {len(peut_etre)} peut-être)."
 
 
+async def analyse_strategique(sujet: str = "") -> str | None:
+    """Stratégies de L'Œil sur les points à suivre (tous, ou un sujet précis)."""
+    return await strategie.generer_strategie(_discussion.client, _discussion.texte_sources(),
+                                             await resume_presence(), sujet)
+
+
+async def envoyer_strategie_aux_chefs(destinataires: list[int]) -> None:
+    texte = await analyse_strategique()
+    if not texte:
+        return
+    morceaux = bilan.decouper("🧠 **Analyse stratégique du soir**\n\n" + texte)
+    for chef_id in destinataires:
+        try:
+            chef = bot.get_user(chef_id) or await bot.fetch_user(chef_id)
+            for morceau in morceaux:
+                await chef.send(morceau)
+        except discord.HTTPException as exc:
+            log.error("Analyse stratégique non envoyée à %s : %s", chef_id, exc)
+
+
 @tasks.loop(time=_heure(config.MISSIONS_HOUR))
 async def envoi_presents() -> None:
     log.info(await envoyer_presents_aux_chefs(config.MISSIONS_CHEF_IDS))
+    if config.STRATEGIE_20H:
+        await envoyer_strategie_aux_chefs(config.MISSIONS_CHEF_IDS)
 
 
 @tasks.loop(time=_heure(config.RELANCE_HOUR))
@@ -340,6 +362,35 @@ async def contexte_missions(jour) -> str:
             ligne += f" ({entree['commentaire']})"
         lignes.append(ligne)
     return "\n".join(lignes)
+
+
+@bot.tree.command(name="strategie", description="L'Œil propose des stratégies pour les points à suivre.")
+@app_commands.describe(sujet="Un sujet précis (ex. Cabra, Kanan). Vide = tous les points ouverts.")
+async def commande_strategie(interaction: discord.Interaction, sujet: str = "") -> None:
+    if not bilan.peut_faire_un_bilan(interaction.user):
+        await interaction.response.send_message("Réservé au staff et aux leads.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    texte = await analyse_strategique(sujet.strip())
+    if not texte:
+        await interaction.followup.send("Je n'ai pas réussi à produire l'analyse. Réessaie dans un instant.",
+                                        ephemeral=True)
+        return
+    for morceau in bilan.decouper(texte):
+        await interaction.followup.send(morceau, ephemeral=True)
+
+
+@bot.tree.command(name="clore", description="Marquer un point à suivre comme réglé (L'Œil n'en parlera plus).")
+@app_commands.describe(point="Le point réglé (ex. « Kanan libéré », « dette des Chapeaux blancs payée »)")
+async def commande_clore(interaction: discord.Interaction, point: str) -> None:
+    if not bilan.peut_faire_un_bilan(interaction.user):
+        await interaction.response.send_message("Réservé au staff et aux leads.", ephemeral=True)
+        return
+    jour = datetime.now(FUSEAU)
+    ok = await noter(f"✅ Point clos le {jour:%d/%m} : {point}", interaction.user.display_name)
+    await interaction.response.send_message(
+        "Noté, point clos." if ok else "Je n'ai pas pu l'écrire dans #mémoire-oeil (permissions ?).",
+        ephemeral=True)
 
 
 @bot.tree.command(name="bilan", description="Donner tes notes de la soirée : L'Œil rédige le bilan complet.")

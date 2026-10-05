@@ -17,6 +17,8 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 
 5. **`/bilan`** (staff et leads) : formulaire pour donner ses notes en vrac de la soirée ; L'Œil (Opus) rédige un bilan complet et structuré (faits, décisions, argent, groupes, missions, points à suivre) et le poste dans `BILANS_CHANNEL_ID`. Il relit ce salon : les bilans deviennent sa mémoire de référence.
 
+6. **Conseiller stratégique** (staff et leads) : L'Œil repère les points à suivre ouverts (bilans, mémoire, objectifs) et propose pour chacun des options avec risques, une recommandation, qui peut s'en charger parmi les présents et la première action. Envoyé aux chefs à 20h avec la liste des présents (`STRATEGIE_20H=0` pour couper), ou à la demande avec `/strategie [sujet]`. `/clore <point>` marque un point comme réglé (note dans #mémoire-oeil).
+
 ## Variables d'environnement
 
 | Variable | Obligatoire | Description |
@@ -42,6 +44,7 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 | `RELANCE_HOUR` | — | Rappel aux joueurs qui n'ont pas validé, `23:00` par défaut |
 | `RAPPORT_HOUR` | — | Rapport des missions, `00:00` par défaut |
 | `LEAD_IDS` | — | ID des leads (virgules) : réponse toujours garantie, jamais sanctionnés (les chefs des missions en font partie) |
+| `STRATEGIE_20H` | — | `0` pour ne plus envoyer l'analyse stratégique à 20h |
 | `SANCTIONS_ENABLED` | — | `0` pour couper avertissements et mutes |
 | `MUTE_MINUTES` | — | Durée du mute, `30` par défaut |
 | `AVERTISSEMENT_HEURES` | — | Durée de validité d'un avertissement, `24` par défaut |
