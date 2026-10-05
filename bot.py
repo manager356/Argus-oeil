@@ -8,8 +8,8 @@ import discord
 from discord import app_commands
 from discord.ext import tasks
 
-from loeil import apaisement, bilan, config, missions, reglages, strategie
-from loeil.annonces import MemoireAnnonces
+from loeil import apaisement, bilan, config, faits_armes, missions, reglages, strategie
+from loeil.annonces import MemoireAnnonces, contenu_message
 from loeil.discussion import Discussion
 from loeil.presence import StockageVotes, VuePresence, publier_sondage, votes_du_jour
 
@@ -506,6 +506,69 @@ async def commande_heure_sondage(interaction: discord.Interaction, heure: str) -
     programmer_sondage(valeur)
     await interaction.response.send_message(
         f"C'est noté : le sondage de présence partira chaque jour à **{valeur}** (heure de Paris).", ephemeral=True)
+
+
+_dernier_faits_armes: dict[int, float] = {}
+LIBELLES_STATUT = {missions.ACCOMPLIE: "accomplie", missions.RATEE: "pas faite", missions.REFUS: "REFUS D'ORDRE",
+                   missions.EN_COURS: "sans réponse"}
+
+
+async def archives_de(nom: str) -> tuple[str, str]:
+    """(extraits d'archives qui citent le membre, historique de ses missions)."""
+    sources = [(config.BILANS_CHANNEL_ID, "Bilan", 500), (config.MEMOIRE_CHANNEL_ID, "Mémoire", 500),
+               (config.ANNONCES_CHANNEL_ID, "Annonce", 300), (config.OBJECTIFS_CHANNEL_ID, "Objectif", 200)]
+    extraits: list[faits_armes.Extrait] = []
+    for salon_id, libelle, limite in sources:
+        salon = bot.get_channel(salon_id or 0)
+        if salon is None:
+            continue
+        try:
+            async for m in salon.history(limit=limite):
+                texte = contenu_message(m)
+                if texte and faits_armes.cite(texte, nom):
+                    extraits.append(faits_armes.Extrait(m.created_at, libelle, m.author.display_name, texte))
+        except discord.HTTPException as exc:
+            log.warning("Archives %s illisibles : %s", libelle, exc)
+
+    lignes_missions = []
+    salon_staff = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0)
+    if salon_staff is not None:
+        try:
+            async for m in salon_staff.history(limit=1500):
+                if m.author != bot.user or not m.embeds:
+                    continue
+                jour = missions.jour_du_suivi(m.embeds[0])
+                if jour is None:
+                    continue
+                for entree in missions.lire_suivi(m.embeds[0]).values():
+                    if faits_armes.cite(entree["nom"], nom):
+                        ligne = (f"- {jour:%d/%m} — {entree['nom']} : {entree['mission']} → "
+                                 f"{LIBELLES_STATUT.get(entree['statut'], entree['statut'])}")
+                        if entree.get("commentaire"):
+                            ligne += f" ({entree['commentaire']})"
+                        lignes_missions.append(ligne)
+        except discord.HTTPException as exc:
+            log.warning("Suivi des missions illisible : %s", exc)
+    return faits_armes.formater_extraits(extraits), "\n".join(reversed(lignes_missions))
+
+
+@bot.tree.command(name="faits-armes", description="Les faits d'armes d'un membre d'Argus, d'après les archives de L'Œil.")
+@app_commands.describe(membre="Le nom du perso (ex. Kanan, Diego, Rosita)")
+async def commande_faits_armes(interaction: discord.Interaction, membre: str) -> None:
+    maintenant = datetime.now().timestamp()
+    if not bilan.peut_faire_un_bilan(interaction.user) and \
+            maintenant - _dernier_faits_armes.get(interaction.user.id, 0) < 120:
+        await interaction.response.send_message("Patience. Une recherche toutes les 2 minutes.", ephemeral=True)
+        return
+    _dernier_faits_armes[interaction.user.id] = maintenant
+    await interaction.response.defer(thinking=True)
+    archives, historique = await archives_de(membre.strip())
+    texte = await faits_armes.rediger(_discussion.client, membre.strip(), archives, historique)
+    if not texte:
+        await interaction.followup.send("Les archives restent muettes pour l'instant. Réessaie dans un instant.")
+        return
+    for morceau in bilan.decouper(texte):
+        await interaction.followup.send(morceau, allowed_mentions=discord.AllowedMentions.none())
 
 
 @bot.tree.command(name="sondage-presence", description="Poster le sondage de présence maintenant.")
