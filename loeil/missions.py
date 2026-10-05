@@ -1,6 +1,7 @@
 """Missions du soir : liste des présents aux chefs, missions envoyées en MP, suivi et rapport."""
 import json
 import logging
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Awaitable, Callable
@@ -70,6 +71,8 @@ class StockageMissions:
     def __init__(self, chemin: Path):
         self.chemin = chemin
         self.donnees: dict[str, dict[str, dict]] = {}
+        # Appelé à chaque changement (jour) : bot.py s'en sert pour mettre à jour le message de suivi Discord.
+        self.au_changement: Callable[[date], None] | None = None
         if chemin.exists():
             try:
                 self.donnees = json.loads(chemin.read_text(encoding="utf-8"))
@@ -79,13 +82,18 @@ class StockageMissions:
     def soiree(self, jour: date) -> dict[str, dict]:
         return self.donnees.get(jour.isoformat(), {})
 
+    def restaurer(self, jour: date, soiree: dict[str, dict]) -> None:
+        """Remet une soirée relue depuis Discord (après un redémarrage), sans redéclencher de synchro."""
+        self.donnees[jour.isoformat()] = soiree
+        self.sauver(notifier=None)
+
     def ajouter(self, jour: date, membre_id: int, nom: str, mission: str, par: str) -> None:
         self.donnees.setdefault(jour.isoformat(), {})[str(membre_id)] = {
             "nom": nom, "mission": mission, "par": par, "statut": EN_COURS, "commentaire": "",
         }
         for ancien in sorted(self.donnees)[:-MAX_JOURS_GARDES]:
             del self.donnees[ancien]
-        self.sauver()
+        self.sauver(notifier=jour)
 
     def statuer(self, jour: date, membre_id: int, statut: str, commentaire: str = "",
                 mission: str = "", nom: str = "") -> None:
@@ -94,11 +102,62 @@ class StockageMissions:
                                                     "statut": EN_COURS, "commentaire": ""})
         entree["statut"] = statut
         entree["commentaire"] = commentaire
-        self.sauver()
+        self.sauver(notifier=jour)
 
-    def sauver(self) -> None:
-        self.chemin.parent.mkdir(parents=True, exist_ok=True)
-        self.chemin.write_text(json.dumps(self.donnees, ensure_ascii=False, indent=1), encoding="utf-8")
+    def sauver(self, notifier: date | None = None) -> None:
+        try:
+            self.chemin.parent.mkdir(parents=True, exist_ok=True)
+            self.chemin.write_text(json.dumps(self.donnees, ensure_ascii=False, indent=1), encoding="utf-8")
+        except OSError as exc:  # le fichier n'est qu'un cache : Discord fait foi
+            log.warning("Fichier des missions non écrit : %s", exc)
+        if notifier is not None and self.au_changement:
+            self.au_changement(notifier)
+
+
+# --- Suivi dans Discord : un message par soirée, relu au redémarrage ---------------------
+
+EMOJIS_STATUT = {EN_COURS: "⏳", ACCOMPLIE: "✅", RATEE: "❌", REFUS: "🚫"}
+MARQUE_SUIVI = "suivi-missions:"
+
+
+def embed_suivi(jour: date, soiree: dict[str, dict]) -> discord.Embed:
+    embed = discord.Embed(title=f"📋 Suivi des missions — soirée du {jour:%d/%m}", color=discord.Color.dark_gold())
+    for membre_id, e in list(soiree.items())[:25]:
+        valeur = f"<@{membre_id}> — {e['mission']}\n-# par {e['par']}"
+        if e.get("commentaire"):
+            valeur += f" · {e['commentaire']}"
+        embed.add_field(name=f"{EMOJIS_STATUT.get(e['statut'], '⏳')} {e['nom']}"[:256], value=valeur[:1024],
+                        inline=False)
+    if not soiree:
+        embed.description = "Aucune mission pour l'instant."
+    embed.set_footer(text=f"{MARQUE_SUIVI}{jour.isoformat()} · mis à jour en direct par L'Œil")
+    return embed
+
+
+def jour_du_suivi(embed: discord.Embed) -> date | None:
+    texte = embed.footer.text or ""
+    if not texte.startswith(MARQUE_SUIVI):
+        return None
+    try:
+        return date.fromisoformat(texte[len(MARQUE_SUIVI):len(MARQUE_SUIVI) + 10])
+    except ValueError:
+        return None
+
+
+def lire_suivi(embed: discord.Embed) -> dict[str, dict]:
+    """Reconstruit la soirée à partir du message de suivi."""
+    statut_par_emoji = {v: k for k, v in EMOJIS_STATUT.items()}
+    soiree: dict[str, dict] = {}
+    for champ in embed.fields:
+        emoji, _, nom = (champ.name or "").partition(" ")
+        premiere, _, seconde = (champ.value or "").partition("\n-# par ")
+        m = re.match(r"<@!?(\d+)> — (.*)", premiere, re.S)
+        if not m:
+            continue
+        par, _, commentaire = seconde.partition(" · ")
+        soiree[m.group(1)] = {"nom": nom, "mission": m.group(2), "par": par or "?",
+                              "statut": statut_par_emoji.get(emoji, EN_COURS), "commentaire": commentaire}
+    return soiree
 
 
 def lignes_rapport(missions: dict[str, dict], presents: dict[int, str]) -> tuple[list[str], list[str], list[str], list[str]]:

@@ -140,3 +140,32 @@ def test_refus_compte_a_part_dans_le_rapport(tmp_path):
     noms = [f.name for f in embed_rapport(jour, soiree, {}).fields]
     assert "🚫 Refus d'ordre (1)" in noms
     assert [m for m, _ in missions.a_relancer(soiree)] == [2]  # pas de relance pour un refus
+
+
+def test_suivi_discord_aller_retour(tmp_path):
+    s = StockageMissions(tmp_path / "m.json")
+    jour = date(2026, 10, 5)
+    s.ajouter(jour, 11, "Bobigny/Rosita", "Identifier le motard au couteau", "Armand /Zero")
+    s.ajouter(jour, 22, "𝘋𝘪𝘦𝘨𝘰 𝘝𝘦𝘪𝘨𝘢 / Ghost", "Briefer les Devils", "Armand /Zero")
+    s.statuer(jour, 11, ACCOMPLIE)
+    s.statuer(jour, 22, RATEE, "pas assez de monde")
+    embed = missions.embed_suivi(jour, s.soiree(jour))
+    assert missions.jour_du_suivi(embed) == jour
+    assert missions.lire_suivi(embed) == s.soiree(jour)
+
+
+def test_suivi_notifie_a_chaque_changement(tmp_path):
+    s = StockageMissions(tmp_path / "m.json")
+    vus = []
+    s.au_changement = vus.append
+    jour = date(2026, 10, 5)
+    s.ajouter(jour, 1, "A", "m", "Armand")
+    s.statuer(jour, 1, ACCOMPLIE)
+    s.restaurer(jour, {})  # une restauration ne redéclenche pas de synchro
+    assert vus == [jour, jour]
+
+
+def test_suivi_vide_et_message_etranger():
+    embed = missions.embed_suivi(date(2026, 10, 5), {})
+    assert embed.description == "Aucune mission pour l'instant." and missions.lire_suivi(embed) == {}
+    assert missions.jour_du_suivi(missions.discord.Embed(title="autre")) is None

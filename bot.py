@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, time
 from pathlib import Path
@@ -23,6 +24,8 @@ FUSEAU = ZoneInfo("Europe/Paris")
 _heure, _minute = (int(x) for x in config.PRESENCE_HOUR.split(":"))
 _stockage_presence = StockageVotes(Path(__file__).parent / "donnees" / "presence.json")
 _stockage_missions = missions.StockageMissions(Path(__file__).parent / "donnees" / "missions.json")
+_messages_suivi: dict[str, discord.Message] = {}
+_verrou_suivi = asyncio.Lock()
 # Salons d'infos que L'Œil lit pour répondre : id du salon -> (nom de la partie, mémoire)
 _salons_infos: dict[int, tuple[str, MemoireAnnonces]] = {}
 if config.ANNONCES_CHANNEL_ID:
@@ -165,6 +168,59 @@ async def statut_presence(membre_id: int) -> str | None:
 
 _discussion.statut_presence = statut_presence
 _discussion.resume_presence = resume_presence
+
+
+async def _trouver_suivi(salon: discord.abc.Messageable, jour) -> discord.Message | None:
+    if jour.isoformat() in _messages_suivi:
+        return _messages_suivi[jour.isoformat()]
+    async for message in salon.history(limit=100):
+        if message.author == bot.user and message.embeds and missions.jour_du_suivi(message.embeds[0]) == jour:
+            _messages_suivi[jour.isoformat()] = message
+            return message
+    return None
+
+
+async def synchroniser_suivi(jour) -> None:
+    """Met à jour (ou crée) le message de suivi des missions dans le salon staff : c'est lui qui fait foi."""
+    salon = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0)
+    if salon is None:
+        return
+    async with _verrou_suivi:  # les changements s'appliquent dans l'ordre, l'état final est toujours le bon
+        embed = missions.embed_suivi(jour, _stockage_missions.soiree(jour))
+        try:
+            message = await _trouver_suivi(salon, jour)
+            if message is None:
+                _messages_suivi[jour.isoformat()] = await salon.send(embed=embed)
+            else:
+                await message.edit(embed=embed)
+        except discord.HTTPException as exc:
+            log.error("Suivi des missions non mis à jour : %s", exc)
+
+
+def _au_changement_missions(jour) -> None:
+    asyncio.create_task(synchroniser_suivi(jour))
+
+
+_stockage_missions.au_changement = _au_changement_missions
+
+
+async def restaurer_suivi() -> None:
+    """Au démarrage : relit le suivi de la soirée en cours depuis Discord (les fichiers ne survivent pas)."""
+    salon = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0)
+    if salon is None:
+        return
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    try:
+        message = await _trouver_suivi(salon, jour)
+    except discord.HTTPException as exc:
+        log.error("Lecture du suivi des missions impossible : %s", exc)
+        return
+    if message is None:
+        return
+    soiree = missions.lire_suivi(message.embeds[0])
+    if len(soiree) >= len(_stockage_missions.soiree(jour)):
+        _stockage_missions.restaurer(jour, soiree)
+        log.info("Suivi des missions restauré depuis Discord : %d mission(s)", len(soiree))
 
 
 async def mission_du_joueur(membre_id: int) -> str:
@@ -429,6 +485,7 @@ async def sondage_presence(interaction: discord.Interaction) -> None:
 @bot.event
 async def on_ready() -> None:
     log.info("L'Œil est connecté en tant que %s (id=%s)", bot.user, bot.user.id if bot.user else "?")
+    await restaurer_suivi()
     for salon_id, (titre, memoire) in _salons_infos.items():
         salon = bot.get_channel(salon_id)
         if salon is None:
