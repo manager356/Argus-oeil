@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import tasks
 
-from loeil import apaisement, config, missions
+from loeil import apaisement, bilan, config, missions
 from loeil.annonces import MemoireAnnonces
 from loeil.discussion import Discussion
 from loeil.presence import StockageVotes, VuePresence, publier_sondage, votes_du_jour
@@ -327,6 +327,28 @@ async def commande_rapport(interaction: discord.Interaction) -> None:
     presents = {**resultat[0], **resultat[1]} if resultat else {}
     embed = missions.embed_rapport(jour, _stockage_missions.soiree(jour), presents)
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+async def contexte_missions(jour) -> str:
+    """Missions de la soirée et leur issue, pour enrichir le bilan."""
+    libelles = {missions.ACCOMPLIE: "accomplie", missions.RATEE: "pas faite", missions.REFUS: "REFUS D'ORDRE",
+                missions.EN_COURS: "sans réponse"}
+    lignes = []
+    for entree in _stockage_missions.soiree(jour).values():
+        ligne = f"- {entree['nom']} : {entree['mission']} → {libelles.get(entree['statut'], entree['statut'])}"
+        if entree.get("commentaire"):
+            ligne += f" ({entree['commentaire']})"
+        lignes.append(ligne)
+    return "\n".join(lignes)
+
+
+@bot.tree.command(name="bilan", description="Donner tes notes de la soirée : L'Œil rédige le bilan complet.")
+async def commande_bilan(interaction: discord.Interaction) -> None:
+    if not bilan.peut_faire_un_bilan(interaction.user):
+        await interaction.response.send_message("Réservé au staff et aux leads.", ephemeral=True)
+        return
+    jour = missions.date_soiree(datetime.now(FUSEAU))
+    await interaction.response.send_modal(bilan.ModalBilan(_discussion.client, jour, contexte_missions))
 
 
 @bot.tree.command(name="sondage-presence", description="Poster le sondage de présence maintenant.")

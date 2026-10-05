@@ -15,6 +15,8 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 
 4. **Missions du soir** : à `MISSIONS_HOUR` (20:00), les chefs (`MISSIONS_CHEF_IDS`) reçoivent en MP la liste des présents avec un bouton **Attribuer les missions** (formulaire « Pseudo : mission »). Chaque joueur reçoit sa mission en MP avec les boutons ✅ Accomplie / ❌ Pas pu la faire. À `RELANCE_HOUR` (23:00), ceux qui n'ont pas validé leur mission reçoivent un rappel en MP. À `RAPPORT_HOUR` (00:00), rapport dans le salon staff et en MP aux chefs. Commandes : `/missions` (liste maintenant), `/mission` (une mission à un joueur), `/rapport-missions`.
 
+5. **`/bilan`** (staff et leads) : formulaire pour donner ses notes en vrac de la soirée ; L'Œil (Opus) rédige un bilan complet et structuré (faits, décisions, argent, groupes, missions, points à suivre) et le poste dans `BILANS_CHANNEL_ID`. Il relit ce salon : les bilans deviennent sa mémoire de référence.
+
 ## Variables d'environnement
 
 | Variable | Obligatoire | Description |
