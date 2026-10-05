@@ -31,6 +31,8 @@ if config.BILANS_CHANNEL_ID:
     _salons_infos[config.BILANS_CHANNEL_ID] = ("bilans_reunions", MemoireAnnonces(taille=12, max_caracteres=8000))
 if config.OBJECTIFS_CHANNEL_ID:
     _salons_infos[config.OBJECTIFS_CHANNEL_ID] = ("objectifs", MemoireAnnonces(taille=20, max_caracteres=3000))
+if config.MEMOIRE_CHANNEL_ID:
+    _salons_infos[config.MEMOIRE_CHANNEL_ID] = ("memoire", MemoireAnnonces(taille=100, max_caracteres=1500))
 _discussion = Discussion({titre: memoire for titre, memoire in _salons_infos.values()})
 
 
@@ -208,6 +210,24 @@ _discussion.mission_du_joueur = mission_du_joueur
 _discussion.signaler_refus = signaler_refus
 
 
+async def noter(note: str, auteur: str) -> bool:
+    """Écrit une note dans #mémoire-oeil ; on_message la range ensuite dans la mémoire de L'Œil."""
+    salon = bot.get_channel(config.MEMOIRE_CHANNEL_ID or 0)
+    if salon is None:
+        log.warning("Salon mémoire %s introuvable", config.MEMOIRE_CHANNEL_ID)
+        return False
+    try:
+        await salon.send(f"📌 {note}\n-# noté à la demande de {auteur}",
+                         allowed_mentions=discord.AllowedMentions.none())
+    except discord.HTTPException as exc:
+        log.error("Note non écrite dans la mémoire : %s", exc)
+        return False
+    return True
+
+
+_discussion.noter = noter
+
+
 async def envoyer_presents_aux_chefs(destinataires: list[int]) -> str:
     jour = missions.date_soiree(datetime.now(FUSEAU))
     resultat = await charger_presents(jour)
@@ -366,6 +386,19 @@ async def on_message(message: discord.Message) -> None:
                     await _discussion.repondre(message, bot.user, directe)
             else:
                 await _discussion.repondre(message, bot.user, directe)
+
+
+@bot.event
+async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent) -> None:
+    # Une note de mémoire (ou une annonce) supprimée : L'Œil l'oublie.
+    if payload.channel_id in _salons_infos:
+        titre, memoire = _salons_infos[payload.channel_id]
+        salon = bot.get_channel(payload.channel_id)
+        if salon is not None:
+            try:
+                await memoire.charger(salon)
+            except discord.HTTPException as exc:
+                log.error("Relecture de %s impossible : %s", titre, exc)
 
 
 @bot.event

@@ -236,3 +236,42 @@ def test_le_lead_a_toujours_une_reponse(monkeypatch):
     assert len(consignes) == 2 and "TOUJOURS" in consignes[1]
     message.reply.assert_awaited_once()
     message.add_reaction.assert_not_called()
+
+
+def test_memoire_retenue_par_le_staff(monkeypatch):
+    from loeil.discussion import lire_retenir
+    assert lire_retenir('{"retenir": " Kanan est chez les bleus depuis le 04/10 "}') == "Kanan est chez les bleus depuis le 04/10"
+    monkeypatch.setattr(discussion.config, "LEAD_IDS", {1})
+    reponse_ia = ('{"repondre": true, "reponse": "Noté.", "mute": "", "demute": "", "refus_confirme": false, '
+                  '"insulte_oeil": false, "retenir": "Kanan est chez les bleus depuis le 04/10"}')
+    vus = []
+
+    async def faux_appel(conversation, consigne):
+        vus.append(conversation)
+        return reponse_ia
+
+    notes = []
+
+    async def noter(note, auteur):
+        notes.append((note, auteur))
+        return True
+
+    async def historique(**_):
+        return
+        yield
+
+    d = Discussion({"annonces": MemoireAnnonces()}, client=object())
+    d._appeler_ia, d.noter = faux_appel, noter
+
+    def message(auteur_id):
+        auteur = SimpleNamespace(id=auteur_id, display_name="Armand" if auteur_id == 1 else "Kylian",
+                                 guild_permissions=discord.Permissions())
+        return SimpleNamespace(author=auteur, content="retiens : Kanan chez les bleus", clean_content="x",
+                               channel=SimpleNamespace(id=5, history=historique), reply=AsyncMock(),
+                               add_reaction=AsyncMock(), guild=None)
+
+    asyncio.run(d.repondre(message(1), SimpleNamespace(id=999), directe=True))
+    assert notes == [("Kanan est chez les bleus depuis le 04/10", "Armand")]
+    assert "<date_du_jour>" in vus[0]
+    asyncio.run(d.repondre(message(2), SimpleNamespace(id=999), directe=True))  # simple membre : rien n'est noté
+    assert len(notes) == 1

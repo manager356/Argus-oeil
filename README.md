@@ -31,6 +31,7 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 | `PRESENCE_HOUR` | — | Heure du sondage, `16:00` par défaut |
 | `ANNONCES_CHANNEL_ID` | — | Salon des annonces que L'Œil lit pour répondre |
 | `BILANS_CHANNEL_ID` | — | Salon des bilans de réunion (10 derniers lus) |
+| `MEMOIRE_CHANNEL_ID` | — | Salon privé #mémoire-oeil où L'Œil note ce que le staff lui apprend (défaut : celui du serveur) |
 | `OBJECTIFS_CHANNEL_ID` | — | Salon des objectifs (défaut : celui du serveur) |
 | `CHAT_MODEL` | — | `claude-opus-5-5` par défaut ; `claude-sonnet-5-5` (~2x moins cher) ou `claude-haiku-4-5` (~4x moins cher, moins fin) |
 | `CHAT_ENABLED` | — | `0` pour couper la discussion |

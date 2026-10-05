@@ -3,6 +3,7 @@ import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import anthropic
 import discord
@@ -18,6 +19,8 @@ NB_MESSAGES_CONTEXTE = 10
 PAUSE_SALON_SPONTANE_SECONDES = 120  # réponse non sollicitée : 1 max / 2 min / salon
 PAUSE_MEMBRE_SECONDES = 8  # un membre ne peut pas le faire parler en boucle
 MAX_CARACTERES_REPONSE = 1900
+FUSEAU = ZoneInfo("Europe/Paris")
+JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 MAX_REPONSES_MEMBRE = 4  # au-delà, sur la fenêtre, L'Œil ne fait plus que regarder (👁️)
 FENETRE_REPONSES_SECONDES = 10 * 60
 JOURS_REMARQUES = 7
@@ -40,7 +43,7 @@ PHRASES_ENNUI = (
 SYSTEME = """Tu es L'Œil, l'entité qui veille sur un serveur Discord de roleplay (RP) GTA francophone.
 Personnalité : mystérieux, calme, phrases courtes, un peu froid, mais tu aides vraiment. Tu parles comme quelqu'un qui voit tout et en dit juste assez. Tu tutoies. Pas d'emojis, sauf 👁️ très rarement.
 
-Ce que tu sais : uniquement les informations ci-dessous (annonces, bilans de réunion, objectifs), le résultat du sondage de présence du soir (<presence_du_soir> : réponds avec ça à « qui est dispo / présent ce soir ? », en citant les pseudos) et la conversation en cours. N'invente JAMAIS une date, une règle, un prix ou une info. Si la réponse n'y est pas, dis-le sobrement et renvoie vers le staff.
+Ce que tu sais : uniquement les informations ci-dessous (annonces, bilans de réunion, objectifs, et <memoire> : ce que la direction t'a demandé de retenir — la note la plus récente fait foi si deux notes se contredisent), le résultat du sondage de présence du soir (<presence_du_soir> : réponds avec ça à « qui est dispo / présent ce soir ? », en citant les pseudos) et la conversation en cours. N'invente JAMAIS une date, une règle, un prix ou une info. Si la réponse n'y est pas, dis-le sobrement et renvoie vers le staff.
 Tu ne prends pas de décisions à la place du staff et tu ne donnes pas d'ordres.
 Tu n'as aucun pouvoir d'exclure ou de bannir : ne menace jamais personne, ne dis jamais à quelqu'un de quitter le serveur ou de « fermer sa gueule ». Les avertissements et les mutes automatiques sont gérés ailleurs : n'en parle pas.
 N'affirme JAMAIS avoir fait une action (mute, démute, envoi, etc.) que tu n'as pas réellement faite via les champs prévus. Si tu ne peux pas faire quelque chose, dis-le honnêtement.
@@ -66,7 +69,8 @@ CONSIGNE_DIRECTE = """On s'adresse directement à toi (mention ou réponse à to
 Si le dernier message t'insulte ou te manque clairement de respect (insulte, rabaissement, provocation agressive, menace envers toi) : mets "insulte_oeil" à true, repondre = false et reponse vide. L'Œil ne débat pas : il sanctionne.
 Si c'est seulement une taquinerie légère, une blague sans méchanceté, ou une provocation envers quelqu'un d'autre : ne réponds pas non plus (repondre = false), mais "insulte_oeil" reste false.
 Sinon réponds (repondre = true), en 1 à 4 phrases.
-Mute / démute : si <auteur_role> vaut "chef" ou "staff" ET que le dernier message te demande explicitement de mute quelqu'un, mets son pseudo exact (tel qu'il apparaît dans la conversation) dans "mute" ; s'il te demande de lever la punition / démute quelqu'un, mets son pseudo dans "demute". Réponds alors en une phrase sobre que c'est fait (ex. "Fait. 30 minutes de silence." / "Fait, il peut reparler."). Si l'auteur est un simple membre, laisse ces champs vides et réponds que seul le staff peut le demander. Dans tous les autres cas, "mute" et "demute" restent vides."""
+Mute / démute : si <auteur_role> vaut "chef" ou "staff" ET que le dernier message te demande explicitement de mute quelqu'un, mets son pseudo exact (tel qu'il apparaît dans la conversation) dans "mute" ; s'il te demande de lever la punition / démute quelqu'un, mets son pseudo dans "demute". Réponds alors en une phrase sobre que c'est fait (ex. "Fait. 30 minutes de silence." / "Fait, il peut reparler."). Si l'auteur est un simple membre, laisse ces champs vides et réponds que seul le staff peut le demander. Dans tous les autres cas, "mute" et "demute" restent vides.
+Mémoire : si <auteur_role> vaut "chef" ou "staff" ET qu'il te demande de retenir, noter ou te souvenir d'une information (ou te la donne pour que tu la gardes), mets dans "retenir" cette information reformulée en une phrase claire et autonome (qui, quoi, quand — utilise <date_du_jour> pour dater « hier », « ce soir »…), puis réponds brièvement que c'est noté. Si l'auteur est un simple membre, "retenir" reste vide et tu réponds que seuls le staff et les leads peuvent t'apprendre des choses. Dans tous les autres cas, "retenir" reste vide."""
 
 CONSIGNE_CHEF_OBLIGATOIRE = """L'auteur fait partie de la direction (lead ou staff). Tu lui réponds TOUJOURS (repondre = true), même à une blague ou une pique : une réponse courte, respectueuse, dans ton style. Jamais de silence avec lui."""
 
@@ -96,8 +100,9 @@ SCHEMA = {
         "demute": {"type": "string"},
         "refus_confirme": {"type": "boolean"},
         "insulte_oeil": {"type": "boolean"},
+        "retenir": {"type": "string"},
     },
-    "required": ["repondre", "reponse", "mute", "demute", "refus_confirme", "insulte_oeil"],
+    "required": ["repondre", "reponse", "mute", "demute", "refus_confirme", "insulte_oeil", "retenir"],
     "additionalProperties": False,
 }
 
@@ -149,6 +154,11 @@ def lire_decision(texte_json: str) -> str | None:
     return reponse[:MAX_CARACTERES_REPONSE]
 
 
+def lire_retenir(texte_json: str) -> str:
+    """Information à mémoriser demandée par le staff (vide sinon)."""
+    return str(json.loads(texte_json).get("retenir", "")).strip()
+
+
 def lire_insulte(texte_json: str) -> bool:
     """Vrai si le message insulte L'Œil (mute immédiat)."""
     return bool(json.loads(texte_json).get("insulte_oeil", False))
@@ -175,6 +185,8 @@ class Discussion:
         self.mission_du_joueur = None
         # Coroutine (membre) -> None : enregistre un refus d'ordre et prévient les chefs, branchée par bot.py
         self.signaler_refus = None
+        # Coroutine (note, auteur) -> bool : écrit la note dans #mémoire-oeil, branchée par bot.py
+        self.noter = None
         self.client = client or anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
         self._derniere_spontanee: dict[int, float] = {}
         self._dernier_membre: dict[int, float] = {}
@@ -223,7 +235,9 @@ class Discussion:
         else:
             role = "staff" if auteur_staff else "membre"
         auteur_staff = auteur_staff or role == "chef"
-        conversation = f"<auteur_role>{role}</auteur_role>\n\n" + conversation
+        aujourd_hui = datetime.now(FUSEAU)
+        conversation = (f"<date_du_jour>{JOURS[aujourd_hui.weekday()]} {aujourd_hui:%d/%m/%Y %Hh%M}</date_du_jour>\n"
+                        f"<auteur_role>{role}</auteur_role>\n\n" + conversation)
         if est_ennui(message.content):
             consigne = CONSIGNE_ENNUI
             conversation = (await recolter_remarques(message.guild) + "\n\n"
@@ -273,6 +287,10 @@ class Discussion:
             cible = lire_mute(texte, "demute")
             if cible:
                 reponse = await self._mute_demande_par_staff(message, historique, cible, lever=True) or reponse
+        note = lire_retenir(texte) if directe and auteur_staff else ""
+        if note and self.noter:
+            if not await self.noter(note, message.author.display_name):
+                reponse = "Je n'ai pas pu l'écrire dans ma mémoire : vérifie mes droits dans #mémoire-oeil."
         if lire_refus(texte) and self.signaler_refus:
             await self.signaler_refus(message.author)
 
