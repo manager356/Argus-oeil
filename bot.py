@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import tasks
 
-from loeil import apaisement, bilan, config, missions, strategie
+from loeil import apaisement, bilan, config, missions, reglages, strategie
 from loeil.annonces import MemoireAnnonces
 from loeil.discussion import Discussion
 from loeil.presence import StockageVotes, VuePresence, publier_sondage, votes_du_jour
@@ -25,6 +25,7 @@ _heure, _minute = (int(x) for x in config.PRESENCE_HOUR.split(":"))
 _stockage_presence = StockageVotes(Path(__file__).parent / "donnees" / "presence.json")
 _stockage_missions = missions.StockageMissions(Path(__file__).parent / "donnees" / "missions.json")
 _messages_suivi: dict[str, discord.Message] = {}
+_reglages = reglages.Reglages()
 _verrou_suivi = asyncio.Lock()
 # Salons d'infos que L'Œil lit pour répondre : id du salon -> (nom de la partie, mémoire)
 _salons_infos: dict[int, tuple[str, MemoireAnnonces]] = {}
@@ -458,6 +459,55 @@ async def commande_bilan(interaction: discord.Interaction) -> None:
     await interaction.response.send_modal(bilan.ModalBilan(_discussion.client, jour, contexte_missions))
 
 
+def programmer_sondage(heure: str) -> None:
+    """Change l'heure du sondage quotidien et relance la tâche pour que ce soit pris en compte tout de suite."""
+    sondage_quotidien.change_interval(time=_heure(heure))
+    if sondage_quotidien.is_running():
+        sondage_quotidien.restart()
+    else:
+        sondage_quotidien.start()
+    log.info("Sondage de présence programmé à %s", heure)
+
+
+async def appliquer_reglages() -> None:
+    """Au démarrage : relit les réglages gardés dans discu boss (ex. heure du sondage choisie par commande)."""
+    salon = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0)
+    if salon is None or bot.user is None:
+        return
+    try:
+        await _reglages.charger(salon, bot.user.id)
+    except discord.HTTPException as exc:
+        log.error("Lecture des réglages impossible : %s", exc)
+        return
+    heure = _reglages.valeurs.get("heure_sondage")
+    if heure and config.PRESENCE_CHANNEL_ID:
+        programmer_sondage(heure)
+
+
+@bot.tree.command(name="heure-sondage", description="Choisir l'heure du sondage de présence quotidien.")
+@app_commands.describe(heure="Ex. 18h, 18:30, 21h")
+async def commande_heure_sondage(interaction: discord.Interaction, heure: str) -> None:
+    if not bilan.peut_faire_un_bilan(interaction.user):
+        await interaction.response.send_message("Réservé au staff et aux leads.", ephemeral=True)
+        return
+    valeur = reglages.heure_valide(heure)
+    if valeur is None:
+        await interaction.response.send_message("Heure invalide. Exemples : `18h`, `18:30`, `21h`.", ephemeral=True)
+        return
+    salon = bot.get_channel(config.TENSION_STAFF_CHANNEL_ID or 0)
+    if salon is None:
+        await interaction.response.send_message("Salon staff introuvable pour garder le réglage.", ephemeral=True)
+        return
+    try:
+        await _reglages.definir(salon, "heure_sondage", valeur)
+    except discord.HTTPException as exc:
+        await interaction.response.send_message(f"Réglage non enregistré : {exc}", ephemeral=True)
+        return
+    programmer_sondage(valeur)
+    await interaction.response.send_message(
+        f"C'est noté : le sondage de présence partira chaque jour à **{valeur}** (heure de Paris).", ephemeral=True)
+
+
 @bot.tree.command(name="sondage-presence", description="Poster le sondage de présence maintenant.")
 @app_commands.default_permissions(manage_guild=True)
 async def sondage_presence(interaction: discord.Interaction) -> None:
@@ -486,6 +536,7 @@ async def sondage_presence(interaction: discord.Interaction) -> None:
 async def on_ready() -> None:
     log.info("L'Œil est connecté en tant que %s (id=%s)", bot.user, bot.user.id if bot.user else "?")
     await restaurer_suivi()
+    await appliquer_reglages()
     for salon_id, (titre, memoire) in _salons_infos.items():
         salon = bot.get_channel(salon_id)
         if salon is None:
