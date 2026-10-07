@@ -52,6 +52,7 @@ class LoeilClient(discord.Client):
     async def setup_hook(self) -> None:
         self.add_view(VuePresence(_stockage_presence))
         self.add_view(missions.VueMission(_stockage_missions))
+        self.add_view(bilan.VueBrouillon(_discussion.client))
         self.add_view(missions.VueAttribution(self, _stockage_missions, charger_presents))
         if config.MISSIONS_CHEF_IDS:
             envoi_presents.start()

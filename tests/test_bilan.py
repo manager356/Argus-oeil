@@ -54,3 +54,52 @@ def test_le_formulaire_se_construit():
         assert len(modal.children) == 3
 
     asyncio.run(scenario())
+
+
+class FauxSalon:
+    """Salon/MP en mémoire : garde les messages envoyés et sait relire l'historique."""
+
+    def __init__(self):
+        self.messages = []
+        self.auteur = SimpleNamespace(id=999)
+
+    async def send(self, content=None, **kwargs):
+        m = SimpleNamespace(id=len(self.messages) + 1, content=content, author=self.auteur, channel=self, **kwargs)
+        self.messages.append(m)
+        return m
+
+    def history(self, limit, before):
+        async def gen():
+            for m in reversed([m for m in self.messages if m.id < before.id][-limit:]):
+                yield m
+        return gen()
+
+
+def test_brouillon_relu_depuis_le_mp_apres_redemarrage():
+    texte = "**📜 Bilan — Kingsley du 06/10**\n" + "\n".join(f"- point {i} " + "x" * 80 for i in range(40))
+
+    async def scenario():
+        mp = FauxSalon()
+        controle = await bilan.envoyer_brouillon(mp, texte, "Armand /Zero", object())
+        assert mp.messages[0].content == bilan.ENTETE_BROUILLON
+        assert len(mp.messages) > 3  # brouillon découpé en plusieurs messages
+        bilan._brouillons.clear()  # simule un redémarrage
+        assert await bilan.relire_brouillon(controle) == texte
+        assert bilan._auteur_du_brouillon(controle) == "Armand /Zero"
+
+    asyncio.run(scenario())
+
+
+def test_corriger_bilan_envoie_brouillon_et_corrections():
+    appels = []
+
+    async def create(**params):
+        appels.append(params)
+        return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text="bilan corrigé")])
+
+    client = SimpleNamespace(messages=SimpleNamespace(create=create), beta=SimpleNamespace(
+        messages=SimpleNamespace(create=create)))
+    assert asyncio.run(bilan.corriger_bilan(client, "Skye a suivi 16", "C'est Pearl, pas Skye")) == "bilan corrigé"
+    contenu = appels[0]["messages"][0]["content"]
+    assert "Skye a suivi 16" in contenu and "C'est Pearl" in contenu
+    assert appels[0]["system"] == bilan.SYSTEME_CORRECTION
