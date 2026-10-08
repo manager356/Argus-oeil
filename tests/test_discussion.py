@@ -215,7 +215,7 @@ def test_le_lead_a_toujours_une_reponse(monkeypatch):
                      '{"repondre": true, "reponse": "Je t\u0027écoute.", "mute": "", "demute": "", "refus_confirme": false, "insulte_oeil": false}'])
     consignes = []
 
-    async def faux_appel(conversation, consigne):
+    async def faux_appel(conversation, consigne, effort="low"):
         consignes.append(consigne)
         return next(reponses)
 
@@ -246,7 +246,7 @@ def test_memoire_retenue_par_le_staff(monkeypatch):
                   '"insulte_oeil": false, "retenir": "Kanan est chez les bleus depuis le 04/10"}')
     vus = []
 
-    async def faux_appel(conversation, consigne):
+    async def faux_appel(conversation, consigne, effort="low"):
         vus.append(conversation)
         return reponse_ia
 
@@ -275,3 +275,21 @@ def test_memoire_retenue_par_le_staff(monkeypatch):
     assert "<date_du_jour>" in vus[0]
     asyncio.run(d.repondre(message(2), SimpleNamespace(id=999), directe=True))  # simple membre : rien n'est noté
     assert len(notes) == 1
+
+
+def test_conversation_indique_qui_repond_a_qui():
+    from loeil.discussion import ligne_conversation
+    cible = discord.Message.__new__(discord.Message)
+    cible.author = SimpleNamespace(display_name="Diego")
+    m = SimpleNamespace(author=SimpleNamespace(display_name="Armand"), content="t'as raison",
+                        reference=SimpleNamespace(resolved=cible))
+    assert ligne_conversation(m) == "Armand (en réponse à Diego) : t'as raison"
+    seul = SimpleNamespace(author=SimpleNamespace(display_name="Rosita"), content="salut", reference=None)
+    assert ligne_conversation(seul) == "Rosita : salut"
+
+
+def test_effort_moyen_quand_on_lui_parle(monkeypatch):
+    appels = []
+    d = Discussion({"annonces": MemoireAnnonces()}, client=_client_espion(appels))
+    asyncio.run(d._appeler_ia("<conversation></conversation>", "consigne", "medium"))
+    assert appels[0]["output_config"]["effort"] == "medium"
