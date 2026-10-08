@@ -91,3 +91,10 @@ STRATEGIE_20H: bool = os.getenv("STRATEGIE_20H", "1") != "0"
 # --- Leads : L'Œil leur répond toujours, avec déférence, et ne les sanctionne jamais ---
 # (les chefs des missions en font automatiquement partie)
 LEAD_IDS: set[int] = set(_optional_int_list("LEAD_IDS")) | set(MISSIONS_CHEF_IDS)
+
+# --- Vocal : L'Œil parle en vocal sur ordre du staff / des leads ---
+# Salon vocal par défaut (sinon il rejoint le vocal de la personne qui lui parle)
+VOCAL_CHANNEL_ID: int | None = _optional_int("VOCAL_CHANNEL_ID")
+VOIX_OEIL: str = os.getenv("VOIX_OEIL") or "fr-FR-HenriNeural"
+VOIX_VITESSE: str = os.getenv("VOIX_VITESSE") or "-8%"
+VOIX_HAUTEUR: str = os.getenv("VOIX_HAUTEUR") or "-6Hz"

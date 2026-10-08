@@ -1,6 +1,7 @@
-discord.py>=2.4.0
+discord.py[voice]>=2.7
 anthropic>=1.11.0
 python-dotenv>=1.0.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
 tzdata>=2024.1
+edge-tts>=7.0

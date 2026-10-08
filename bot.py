@@ -634,6 +634,16 @@ async def on_message(message: discord.Message) -> None:
 
 
 @bot.event
+async def on_voice_state_update(membre: discord.Member, avant: discord.VoiceState, apres: discord.VoiceState) -> None:
+    # Seul dans le vocal : L'Œil s'en va.
+    vc = membre.guild.voice_client
+    if vc is None or not vc.is_connected() or avant.channel != vc.channel:
+        return
+    if not [m for m in vc.channel.members if not m.bot]:
+        await vc.disconnect()
+
+
+@bot.event
 async def on_raw_message_delete(payload: discord.RawMessageDeleteEvent) -> None:
     # Une note de mémoire (ou une annonce) supprimée : L'Œil l'oublie.
     if payload.channel_id in _salons_infos:

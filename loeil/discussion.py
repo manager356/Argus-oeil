@@ -1,4 +1,5 @@
 """L'Œil discute : il répond quand on lui parle, ou aux questions générales qu'il peut éclairer."""
+import asyncio
 import json
 import logging
 import time
@@ -11,6 +12,7 @@ import discord
 from loeil import config, sanctions
 from loeil.analyseur import MODELES_AVEC_REPLI
 from loeil.annonces import MemoireAnnonces
+from loeil.vocal import ACTIONS as ACTIONS_VOCALES, Vocal, salon_vocal_de
 from loeil.tension import normaliser
 
 log = logging.getLogger("loeil.discussion")
@@ -72,7 +74,12 @@ Si c'est seulement une taquinerie légère, une blague sans méchanceté, ou une
 Sinon réponds (repondre = true), en 1 à 4 phrases.
 Exception : si <auteur_role> vaut "chef" ou "staff" et qu'il te demande quoi faire face à une situation (« on fait quoi pour… », « t'en penses quoi »), joue ton rôle de conseiller : 2 ou 3 options courtes avec leur risque, ta recommandation et la première action à lancer (jusqu'à 10 lignes).
 Mute / démute : si <auteur_role> vaut "chef" ou "staff" ET que le dernier message te demande explicitement de mute quelqu'un, mets son pseudo exact (tel qu'il apparaît dans la conversation) dans "mute" ; s'il te demande de lever la punition / démute quelqu'un, mets son pseudo dans "demute". Réponds alors en une phrase sobre que c'est fait (ex. "Fait. 30 minutes de silence." / "Fait, il peut reparler."). Si l'auteur est un simple membre, laisse ces champs vides et réponds que seul le staff peut le demander. Dans tous les autres cas, "mute" et "demute" restent vides.
-Mémoire : si <auteur_role> vaut "chef" ou "staff" ET qu'il te demande de retenir, noter ou te souvenir d'une information (ou te la donne pour que tu la gardes), mets dans "retenir" cette information reformulée en une phrase claire et autonome (qui, quoi, quand — utilise <date_du_jour> pour dater « hier », « ce soir »…), puis réponds brièvement que c'est noté. Si l'auteur est un simple membre, "retenir" reste vide et tu réponds que seuls le staff et les leads peuvent t'apprendre des choses. Dans tous les autres cas, "retenir" reste vide."""
+Mémoire : si <auteur_role> vaut "chef" ou "staff" ET qu'il te demande de retenir, noter ou te souvenir d'une information (ou te la donne pour que tu la gardes), mets dans "retenir" cette information reformulée en une phrase claire et autonome (qui, quoi, quand — utilise <date_du_jour> pour dater « hier », « ce soir »…), puis réponds brièvement que c'est noté. Si l'auteur est un simple membre, "retenir" reste vide et tu réponds que seuls le staff et les leads peuvent t'apprendre des choses. Dans tous les autres cas, "retenir" reste vide.
+Ordres vocaux : si <auteur_role> vaut "chef" ou "staff" et qu'il t'ordonne quelque chose en vocal, remplis "vocal" :
+- "rejoindre" : venir en vocal ; "quitter" : partir du vocal ;
+- "dire" : parler en vocal. Mets dans "texte_vocal" ce que tu vas dire à voix haute, rédigé dans ton style (phrases courtes, pas d'emoji, pas de mise en forme, écrit pour être entendu) ;
+- "mute_vocal" / "demute_vocal" : rendre muet / redonner la parole à quelqu'un en vocal ; mets son pseudo exact dans "cible_vocal".
+Réponds alors à l'écrit en une phrase courte (« J'arrive. », « C'est dit. »). Si l'auteur est un simple membre, "vocal" vaut "aucune" et tu réponds que seuls le staff et les leads te donnent des ordres. Sinon "vocal" vaut "aucune" et "texte_vocal" / "cible_vocal" restent vides."""
 
 CONSIGNE_CHEF_OBLIGATOIRE = """L'auteur fait partie de la direction (lead ou staff). Tu lui réponds TOUJOURS (repondre = true), même à une blague ou une pique : une réponse courte, respectueuse, dans ton style. Jamais de silence avec lui."""
 
@@ -103,8 +110,12 @@ SCHEMA = {
         "refus_confirme": {"type": "boolean"},
         "insulte_oeil": {"type": "boolean"},
         "retenir": {"type": "string"},
+        "vocal": {"type": "string", "enum": list(ACTIONS_VOCALES)},
+        "texte_vocal": {"type": "string"},
+        "cible_vocal": {"type": "string"},
     },
-    "required": ["repondre", "reponse", "mute", "demute", "refus_confirme", "insulte_oeil", "retenir"],
+    "required": ["repondre", "reponse", "mute", "demute", "refus_confirme", "insulte_oeil", "retenir",
+                 "vocal", "texte_vocal", "cible_vocal"],
     "additionalProperties": False,
 }
 
@@ -166,6 +177,15 @@ def ligne_conversation(m: discord.Message, contenu: str | None = None) -> str:
     return f"{m.author.display_name}{cible} : {contenu if contenu is not None else m.content}"
 
 
+def lire_vocal(texte_json: str) -> tuple[str, str, str]:
+    """(action vocale, texte à dire, pseudo visé) demandés par le staff."""
+    data = json.loads(texte_json)
+    action = str(data.get("vocal", "aucune"))
+    if action not in ACTIONS_VOCALES:
+        action = "aucune"
+    return action, str(data.get("texte_vocal", "")).strip(), str(data.get("cible_vocal", "")).strip()
+
+
 def lire_retenir(texte_json: str) -> str:
     """Information à mémoriser demandée par le staff (vide sinon)."""
     return str(json.loads(texte_json).get("retenir", "")).strip()
@@ -199,6 +219,7 @@ class Discussion:
         self.signaler_refus = None
         # Coroutine (note, auteur) -> bool : écrit la note dans #mémoire-oeil, branchée par bot.py
         self.noter = None
+        self.vocal = Vocal()
         self.client = client or anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
         self._derniere_spontanee: dict[int, float] = {}
         self._dernier_membre: dict[int, float] = {}
@@ -306,6 +327,9 @@ class Discussion:
             cible = lire_mute(texte, "demute")
             if cible:
                 reponse = await self._mute_demande_par_staff(message, historique, cible, lever=True) or reponse
+        ordre = lire_vocal(texte) if directe and auteur_staff else ("aucune", "", "")
+        if ordre[0] != "aucune":
+            reponse = await self._executer_vocal(message, historique, *ordre) or reponse
         note = lire_retenir(texte) if directe and auteur_staff else ""
         if note and self.noter:
             if not await self.noter(note, message.author.display_name):
@@ -322,6 +346,59 @@ class Discussion:
             await message.reply(reponse, mention_author=False, allowed_mentions=discord.AllowedMentions.none())
         except discord.HTTPException as exc:
             log.error("Impossible de répondre dans %s : %s", message.channel.id, exc)
+
+    async def _executer_vocal(self, message: discord.Message, historique: list[discord.Message],
+                              action: str, texte: str, cible: str) -> str | None:
+        """Exécute un ordre vocal du staff. Retourne un texte de remplacement si ça échoue."""
+        guild = message.guild
+        if guild is None:
+            return None
+        try:
+            if action == "quitter":
+                await self.vocal.quitter(guild)
+                return None
+            if action in ("mute_vocal", "demute_vocal"):
+                membre = self._trouver_membre(message, historique, cible)
+                if membre is None:
+                    return "Je ne vois pas qui. Mentionne-le."
+                if action == "mute_vocal" and sanctions.est_protege(membre):
+                    return "Je ne rends pas muet le staff."
+                await membre.edit(mute=(action == "mute_vocal"), reason=f"L'Œil — ordre de {message.author.display_name}")
+                return None
+            salon = salon_vocal_de(message.author, guild)
+            if salon is None:
+                return "Rejoins un salon vocal d'abord : je viens là où tu es."
+            await self.vocal.rejoindre(salon)
+            if action == "dire" and texte:
+                asyncio.create_task(self._parler(salon, texte, message.channel))
+        except discord.Forbidden:
+            log.error("Ordre vocal %s refusé par Discord (permissions)", action)
+            return "Il me manque une permission pour ça en vocal (Se connecter / Parler / Rendre muet des membres)."
+        except (discord.HTTPException, discord.ClientException, asyncio.TimeoutError, RuntimeError) as exc:
+            log.error("Ordre vocal %s impossible : %s", action, exc)
+            return "Je n'arrive pas à le faire en vocal pour l'instant."
+        return None
+
+    async def _parler(self, salon: discord.VoiceChannel, texte: str, salon_texte: discord.abc.Messageable) -> None:
+        try:
+            await self.vocal.dire(salon, texte)
+        except Exception as exc:  # la voix est un service externe : on prévient sans planter
+            log.error("Prise de parole impossible : %s", exc)
+            try:
+                await salon_texte.send("Ma voix ne passe pas pour l'instant. Je l'écris : " + texte[:1800],
+                                       allowed_mentions=discord.AllowedMentions.none())
+            except discord.HTTPException:
+                pass
+
+    def _trouver_membre(self, message: discord.Message, historique: list[discord.Message],
+                        cible: str) -> discord.Member | None:
+        candidats = [m for m in message.mentions if not m.bot]
+        candidats += [m.author for m in historique if not m.author.bot and isinstance(m.author, discord.Member)]
+        cle = normaliser(cible).lstrip("@").strip()
+        membre = next((m for m in candidats if normaliser(m.display_name).strip() == cle), None)
+        if membre is None and getattr(message, "guild", None) is not None:
+            membre = message.guild.get_member_named(cible.lstrip("@").strip())
+        return membre
 
     async def _mute_demande_par_staff(self, message: discord.Message, historique: list[discord.Message],
                                       cible: str, lever: bool = False) -> str | None:
