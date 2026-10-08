@@ -15,10 +15,18 @@ ACTIONS = ("aucune", "rejoindre", "dire", "quitter", "mute_vocal", "demute_vocal
 MAX_CARACTERES_PAROLE = 1200  # au-delà, c'est trop long à écouter
 
 
-async def synthetiser(texte: str, chemin: str) -> None:
-    """Écrit le texte lu par la voix de L'Œil dans un fichier mp3."""
-    await edge_tts.Communicate(texte[:MAX_CARACTERES_PAROLE], config.VOIX_OEIL,
-                               rate=config.VOIX_VITESSE, pitch=config.VOIX_HAUTEUR).save(chemin)
+async def synthetiser(texte: str, chemin: str, essais: int = 3) -> None:
+    """Écrit le texte lu par la voix de L'Œil dans un fichier mp3 (le service gratuit a parfois des ratés)."""
+    for essai in range(1, essais + 1):
+        try:
+            await edge_tts.Communicate(texte[:MAX_CARACTERES_PAROLE], config.VOIX_OEIL,
+                                       rate=config.VOIX_VITESSE, pitch=config.VOIX_HAUTEUR).save(chemin)
+            return
+        except Exception as exc:
+            if essai == essais:
+                raise
+            log.warning("Synthèse vocale ratée (essai %d) : %s", essai, exc)
+            await asyncio.sleep(1.5 * essai)
 
 
 class Vocal:
