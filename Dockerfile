@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# ffmpeg : nécessaire pour que L'Œil parle en vocal
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# ffmpeg + libopus : nécessaires pour que L'Œil parle en vocal
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libopus0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

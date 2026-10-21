@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import shutil
 import tempfile
 
 import discord
@@ -27,6 +28,19 @@ async def synthetiser(texte: str, chemin: str, essais: int = 3) -> None:
                 raise
             log.warning("Synthèse vocale ratée (essai %d) : %s", essai, exc)
             await asyncio.sleep(1.5 * essai)
+
+
+def preparer_audio() -> str:
+    """Charge Opus (encodage du son pour Discord) et vérifie ffmpeg. Retourne un état lisible pour les logs."""
+    if not discord.opus.is_loaded():
+        for nom in ("opus", "libopus.so.0", "libopus.so", "libopus-0.dll"):
+            try:
+                discord.opus.load_opus(nom)
+                break
+            except OSError:
+                continue
+    ffmpeg = shutil.which("ffmpeg") is not None
+    return f"opus={'ok' if discord.opus.is_loaded() else 'ABSENT'} ffmpeg={'ok' if ffmpeg else 'ABSENT'}"
 
 
 class Vocal:

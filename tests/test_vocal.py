@@ -58,3 +58,25 @@ def test_synthese_vocale_produit_un_mp3(tmp_path):
     except Exception:  # pas de réseau : le test ne s'applique pas
         return
     assert os.path.getsize(chemin) > 1000
+
+
+def _membre(nom):
+    return SimpleNamespace(display_name=nom, bot=False)
+
+
+def test_trouver_membre_par_bout_de_pseudo_ou_mention(monkeypatch):
+    monkeypatch.setattr(discussion.discord, "Member", SimpleNamespace)
+    d = Discussion({"annonces": MemoireAnnonces()}, client=object())
+    charles, bobigny = _membre("Charles | Spartan"), _membre("Bobigny/Jefe")
+    historique = [SimpleNamespace(author=charles), SimpleNamespace(author=bobigny)]
+    sans_mention = SimpleNamespace(mentions=[], guild=SimpleNamespace(get_member_named=lambda n: None))
+    assert d._trouver_membre(sans_mention, historique, "charles") is charles
+    assert d._trouver_membre(sans_mention, historique, "Charles | Spartan") is charles
+    assert d._trouver_membre(sans_mention, historique, "personne") is None
+    avec_mention = SimpleNamespace(mentions=[charles], guild=None)
+    assert d._trouver_membre(avec_mention, [], "Charlie") is charles  # la mention suffit
+
+
+def test_preparer_audio_retourne_un_etat():
+    etat = vocal.preparer_audio()
+    assert "opus=" in etat and "ffmpeg=" in etat

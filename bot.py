@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import tasks
 
-from loeil import apaisement, bilan, config, faits_armes, missions, reglages, strategie
+from loeil import apaisement, bilan, config, faits_armes, missions, reglages, strategie, vocal
 from loeil.annonces import MemoireAnnonces, contenu_message
 from loeil.discussion import Discussion
 from loeil.presence import StockageVotes, VuePresence, publier_sondage, votes_du_jour
@@ -600,6 +600,7 @@ async def sondage_presence(interaction: discord.Interaction) -> None:
 async def on_ready() -> None:
     log.info("L'Œil est connecté en tant que %s (id=%s)", bot.user, bot.user.id if bot.user else "?")
     await restaurer_suivi()
+    log.info("Audio pour le vocal : %s", vocal.preparer_audio())
     await appliquer_reglages()
     for salon_id, (titre, memoire) in _salons_infos.items():
         salon = bot.get_channel(salon_id)

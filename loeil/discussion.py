@@ -383,7 +383,7 @@ class Discussion:
         try:
             await self.vocal.dire(salon, texte)
         except Exception as exc:  # la voix est un service externe : on prévient sans planter
-            log.error("Prise de parole impossible : %s", exc)
+            log.exception("Prise de parole impossible (%s) : %s", type(exc).__name__, exc)
             try:
                 await salon_texte.send("Ma voix ne passe pas pour l'instant. Je l'écris : " + texte[:1800],
                                        allowed_mentions=discord.AllowedMentions.none())
@@ -392,23 +392,31 @@ class Discussion:
 
     def _trouver_membre(self, message: discord.Message, historique: list[discord.Message],
                         cible: str) -> discord.Member | None:
-        candidats = [m for m in message.mentions if not m.bot]
-        candidats += [m.author for m in historique if not m.author.bot and isinstance(m.author, discord.Member)]
+        """Retrouve la personne visée : mention, pseudo exact, ou bout de pseudo s'il n'y a pas d'ambiguïté."""
+        mentionnes = [m for m in message.mentions if not m.bot]
+        candidats = list(mentionnes)
+        for m in historique:
+            if not m.author.bot and isinstance(m.author, discord.Member) and m.author not in candidats:
+                candidats.append(m.author)
         cle = normaliser(cible).lstrip("@").strip()
-        membre = next((m for m in candidats if normaliser(m.display_name).strip() == cle), None)
-        if membre is None and getattr(message, "guild", None) is not None:
-            membre = message.guild.get_member_named(cible.lstrip("@").strip())
-        return membre
+        if cle:
+            exact = [m for m in candidats if normaliser(m.display_name).strip() == cle]
+            if exact:
+                return exact[0]
+            # « charles » pour « Charles | Spartan » : un seul pseudo qui contient le mot -> c'est lui
+            partiels = [m for m in candidats if cle in normaliser(m.display_name)]
+            if len(partiels) == 1:
+                return partiels[0]
+        if len(mentionnes) == 1:  # une seule personne mentionnée : c'est forcément elle
+            return mentionnes[0]
+        if cle and getattr(message, "guild", None) is not None:
+            return message.guild.get_member_named(cible.lstrip("@").strip())
+        return None
 
     async def _mute_demande_par_staff(self, message: discord.Message, historique: list[discord.Message],
                                       cible: str, lever: bool = False) -> str | None:
         """Applique le mute (ou le lève) à la demande du staff. Retourne un texte de remplacement si échec."""
-        candidats = [m for m in message.mentions if not m.bot]
-        candidats += [m.author for m in historique if not m.author.bot and isinstance(m.author, discord.Member)]
-        cle = normaliser(cible).lstrip("@").strip()
-        membre = next((m for m in candidats if normaliser(m.display_name).strip() == cle), None)
-        if membre is None and getattr(message, "guild", None) is not None:
-            membre = message.guild.get_member_named(cible.lstrip("@").strip())
+        membre = self._trouver_membre(message, historique, cible)
         if membre is None:
             verbe = "démute" if lever else "mute"
             return f"Je ne vois pas qui {verbe}. Mentionne-le : @L'œil {verbe} @pseudo."
