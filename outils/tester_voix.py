@@ -3,11 +3,11 @@
 Lancement (depuis le dossier Argus-oeil) :
     .venv\\Scripts\\python outils\\tester_voix.py
 
-La clé est demandée en saisie masquée : elle n'est ni affichée, ni enregistrée.
+La clé est collée dans le terminal (écran effacé ensuite) ; elle n'est enregistrée nulle part.
 Le résultat est écrit dans outils\\voix_test_elevenlabs.mp3, puis ouvert pour l'écoute.
 """
 import asyncio
-import getpass
+
 import os
 import sys
 from pathlib import Path
@@ -23,8 +23,14 @@ TEXTE = ("Je suis L'Œil. Je vois tout, j'entends tout. "
 
 
 async def main() -> None:
-    config.ELEVENLABS_API_KEY = getpass.getpass("Clé API ElevenLabs (rien ne s'affiche, c'est normal) : ").strip()
-    config.ELEVENLABS_VOICE_ID = input("Voice ID : ").strip()
+    print("Colle avec Ctrl+V (ou clic droit), puis Entrée. Ne fais pas de capture d'écran de ta clé.\n")
+    config.ELEVENLABS_API_KEY = (os.getenv("ELEVENLABS_API_KEY") or input("Clé API ElevenLabs : ")).strip()
+    config.ELEVENLABS_VOICE_ID = (os.getenv("ELEVENLABS_VOICE_ID") or input("Voice ID : ")).strip()
+    if not config.ELEVENLABS_API_KEY or not config.ELEVENLABS_VOICE_ID:
+        print("\nLa clé ou le Voice ID est vide : rien n'a été collé. Recommence.")
+        return
+    if os.name == "nt":  # efface l'écran pour ne pas laisser la clé affichée
+        os.system("cls")
     sortie = Path(__file__).resolve().parent / "voix_test_elevenlabs.mp3"
     try:
         await vocal.synthetiser_elevenlabs(TEXTE, str(sortie))
