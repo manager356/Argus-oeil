@@ -45,6 +45,11 @@ Bot Discord en Python pour le serveur RP. Il a quatre fonctions :
 | `RAPPORT_HOUR` | — | Rapport des missions, `00:00` par défaut |
 | `LEAD_IDS` | — | ID des leads (virgules) : réponse toujours garantie, jamais sanctionnés (les chefs des missions en font partie) |
 | `STRATEGIE_20H` | — | `0` pour ne plus envoyer l'analyse stratégique à 20h |
+| `VOCAL_CHANNEL_ID` | — | Salon vocal par défaut (sinon celui de la personne qui donne l'ordre) |
+| `VOIX_OEIL` | — | Voix gratuite Microsoft, `fr-FR-HenriNeural` par défaut |
+| `ELEVENLABS_API_KEY` | — | Clé ElevenLabs : active la voix réaliste (voix gratuite en secours) |
+| `ELEVENLABS_VOICE_ID` | — | Identifiant de la voix ElevenLabs choisie |
+| `ELEVENLABS_MODEL` | — | `eleven_multilingual_v2` par défaut |
 | `SANCTIONS_ENABLED` | — | `0` pour couper avertissements et mutes |
 | `MUTE_MINUTES` | — | Durée du mute, `30` par défaut |
 | `AVERTISSEMENT_HEURES` | — | Durée de validité d'un avertissement, `24` par défaut |

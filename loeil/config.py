@@ -98,3 +98,7 @@ VOCAL_CHANNEL_ID: int | None = _optional_int("VOCAL_CHANNEL_ID")
 VOIX_OEIL: str = os.getenv("VOIX_OEIL") or "fr-FR-HenriNeural"
 VOIX_VITESSE: str = os.getenv("VOIX_VITESSE") or "-8%"
 VOIX_HAUTEUR: str = os.getenv("VOIX_HAUTEUR") or "-6Hz"
+# Voix ElevenLabs (optionnelle) : si la clé et la voix sont renseignées, elle remplace la voix gratuite
+ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY") or ""
+ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID") or ""
+ELEVENLABS_MODEL: str = os.getenv("ELEVENLABS_MODEL") or "eleven_multilingual_v2"

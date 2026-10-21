@@ -80,3 +80,31 @@ def test_trouver_membre_par_bout_de_pseudo_ou_mention(monkeypatch):
 def test_preparer_audio_retourne_un_etat():
     etat = vocal.preparer_audio()
     assert "opus=" in etat and "ffmpeg=" in etat
+
+
+def test_elevenlabs_utilise_puis_secours_microsoft(monkeypatch, tmp_path):
+    chemin = str(tmp_path / "v.mp3")
+    appels = []
+
+    async def eleven(texte, c):
+        appels.append("eleven")
+        raise RuntimeError("quota épuisé")
+
+    class FauxEdge:
+        def __init__(self, texte, voix, rate, pitch):
+            appels.append(("edge", voix))
+
+        async def save(self, c):
+            open(c, "wb").write(b"mp3")
+
+    monkeypatch.setattr(vocal, "synthetiser_elevenlabs", eleven)
+    monkeypatch.setattr(vocal.edge_tts, "Communicate", FauxEdge)
+    monkeypatch.setattr(vocal.config, "ELEVENLABS_API_KEY", "cle")
+    monkeypatch.setattr(vocal.config, "ELEVENLABS_VOICE_ID", "voix")
+    asyncio.run(vocal.synthetiser("Bonsoir.", chemin))
+    assert appels[0] == "eleven" and appels[1][0] == "edge"  # ElevenLabs tenté, Microsoft en secours
+
+    appels.clear()
+    monkeypatch.setattr(vocal.config, "ELEVENLABS_API_KEY", "")
+    asyncio.run(vocal.synthetiser("Bonsoir.", chemin))
+    assert appels and appels[0][0] == "edge"  # sans clé : directement la voix gratuite
