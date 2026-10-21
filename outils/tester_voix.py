@@ -3,12 +3,12 @@
 Lancement (depuis le dossier Argus-oeil) :
     .venv\\Scripts\\python outils\\tester_voix.py
 
-La clé est collée dans le terminal (écran effacé ensuite) ; elle n'est enregistrée nulle part.
+La clé et le Voice ID sont lus dans le presse-papiers (copie-les, rien à coller) ; rien n'est enregistré.
 Le résultat est écrit dans outils\\voix_test_elevenlabs.mp3, puis ouvert pour l'écoute.
 """
 import asyncio
-
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -22,15 +22,27 @@ TEXTE = ("Je suis L'Œil. Je vois tout, j'entends tout. "
          "Ce soir, chacun connaît sa mission. Personne ne recule.")
 
 
+def presse_papier() -> str:
+    """Ce qui est copié (Ctrl+C) en ce moment, lu via PowerShell : pas besoin de coller dans le terminal."""
+    resultat = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Clipboard"],
+                              capture_output=True, text=True, encoding="utf-8")
+    return resultat.stdout.strip()
+
+
 async def main() -> None:
-    print("Colle avec Ctrl+V (ou clic droit), puis Entrée. Ne fais pas de capture d'écran de ta clé.\n")
-    config.ELEVENLABS_API_KEY = (os.getenv("ELEVENLABS_API_KEY") or input("Clé API ElevenLabs : ")).strip()
-    config.ELEVENLABS_VOICE_ID = (os.getenv("ELEVENLABS_VOICE_ID") or input("Voice ID : ")).strip()
+    input("1) Copie ta CLÉ API ElevenLabs (Ctrl+C), puis appuie sur Entrée ici… ")
+    config.ELEVENLABS_API_KEY = presse_papier()
+    print(f"   Clé lue : {config.ELEVENLABS_API_KEY[:4]}…{config.ELEVENLABS_API_KEY[-3:]} "
+          f"({len(config.ELEVENLABS_API_KEY)} caractères)")
+    input("2) Copie maintenant le VOICE ID (Ctrl+C), puis appuie sur Entrée ici… ")
+    config.ELEVENLABS_VOICE_ID = presse_papier()
+    print(f"   Voice ID lu : {config.ELEVENLABS_VOICE_ID}")
     if not config.ELEVENLABS_API_KEY or not config.ELEVENLABS_VOICE_ID:
-        print("\nLa clé ou le Voice ID est vide : rien n'a été collé. Recommence.")
+        print("\nLe presse-papiers était vide. Recommence en copiant bien avant d'appuyer sur Entrée.")
         return
-    if os.name == "nt":  # efface l'écran pour ne pas laisser la clé affichée
-        os.system("cls")
+    if config.ELEVENLABS_API_KEY == config.ELEVENLABS_VOICE_ID:
+        print("\nTu as copié deux fois la même chose : la clé et le Voice ID doivent être différents.")
+        return
     sortie = Path(__file__).resolve().parent / "voix_test_elevenlabs.mp3"
     try:
         await vocal.synthetiser_elevenlabs(TEXTE, str(sortie))
